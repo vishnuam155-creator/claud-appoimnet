@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Appointment System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.3);
+            padding: 50px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .feature {
+            padding: 30px;
+            border-radius: 15px;
+            background: #f8f9fa;
+        }
+        
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .feature h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .feature p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            padding: 18px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 30px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .admin-link {
+            margin-top: 30px;
+            color: #666;
+        }
+        
+        .admin-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .admin-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Medical Appointment System</h1>
+        <p class="subtitle">Book your appointment with our AI-powered chatbot</p>
+        
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>AI Assistant</h3>
+                <p>Smart chatbot understands your symptoms</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">👨‍⚕️</div>
+                <h3>Expert Doctors</h3>
+                <p>Connect with specialized doctors</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <h3>Instant Booking</h3>
+                <p>Book appointments in minutes</p>
+            </div>
+        </div>
+        
+        <a href="{% url 'patient_booking:chatbot' %}" class="cta-button">
+            📅 Book Appointment Now
+        </a>
+        
+        <div class="admin-link">
+            <p>Staff? <a href="/admin/">Login to Admin Panel</a></p>
+        </div>
+    </div>
+</body>
+</html>
