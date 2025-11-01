@@ -47,7 +47,8 @@ class ConversationManager:
     
     def process_message(self, user_message):
         """
-        Process user message and return response with actions
+        Process user message with intelligent intent detection
+        Enhanced to understand changes, corrections, and backward navigation
         """
         # Add user message to history
         self.state['conversation_history'].append({
@@ -55,34 +56,59 @@ class ConversationManager:
             'content': user_message,
             'timestamp': datetime.now().isoformat()
         })
-        
-        # Process based on current stage
+
         stage = self.state['stage']
-        
+
+        # Skip intent detection for greeting stage
         if stage == 'greeting':
             response = self._handle_greeting(user_message)
-        elif stage == 'symptoms':
-            response = self._handle_symptoms(user_message)
-        elif stage == 'doctor_selection':
-            response = self._handle_doctor_selection(user_message)
-        elif stage == 'date_selection':
-            response = self._handle_date_selection(user_message)
-        elif stage == 'time_selection':
-            response = self._handle_time_selection(user_message)
-        elif stage == 'patient_details':
-            response = self._handle_patient_details(user_message)
-        elif stage == 'confirmation':
-            response = self._handle_confirmation(user_message)
         else:
-            response = self._default_response()
-        
+            # Detect user intent using AI
+            intent = self.claude.detect_intent(
+                user_message,
+                stage,
+                self.state['data']
+            )
+
+            print(f"[Intent Detection] Stage: {stage}, Intent: {intent['intent']}, Confidence: {intent['confidence']}")
+
+            # Handle intent-based routing
+            if intent['intent'] == 'change_doctor':
+                response = self._handle_change_doctor(user_message, intent)
+            elif intent['intent'] == 'change_date':
+                response = self._handle_change_date(user_message, intent)
+            elif intent['intent'] == 'change_time':
+                response = self._handle_change_time(user_message, intent)
+            elif intent['intent'] == 'go_back':
+                response = self._handle_go_back(user_message, intent)
+            elif intent['intent'] == 'cancel':
+                response = self._handle_cancel(user_message)
+            elif intent['intent'] == 'clarify':
+                response = self._handle_clarification(user_message, intent)
+            else:
+                # Proceed normally based on current stage
+                if stage == 'symptoms':
+                    response = self._handle_symptoms(user_message)
+                elif stage == 'doctor_selection':
+                    response = self._handle_doctor_selection(user_message)
+                elif stage == 'date_selection':
+                    response = self._handle_date_selection(user_message)
+                elif stage == 'time_selection':
+                    response = self._handle_time_selection(user_message)
+                elif stage == 'patient_details':
+                    response = self._handle_patient_details(user_message)
+                elif stage == 'confirmation':
+                    response = self._handle_confirmation(user_message)
+                else:
+                    response = self._default_response()
+
         # Add bot response to history
         self.state['conversation_history'].append({
             'role': 'assistant',
             'content': response['message'],
             'timestamp': datetime.now().isoformat()
         })
-        
+
         self._save_state()
         return response
     
@@ -375,6 +401,191 @@ Is there anything else I can help you with?""",
             'action': 'clarify',
             'options': None
         }
+
+    def _handle_change_doctor(self, message, intent):
+        """Handle doctor change request intelligently"""
+        response_text = self.claude.generate_contextual_response(
+            message, intent, self.state['stage'], self.state['data']
+        )
+
+        # Clear date and time if they were set
+        if 'appointment_date' in self.state['data']:
+            del self.state['data']['appointment_date']
+        if 'appointment_time' in self.state['data']:
+            del self.state['data']['appointment_time']
+
+        # Go back to doctor selection
+        self.state['stage'] = 'doctor_selection'
+
+        # Get available doctors based on the original symptoms
+        if 'suggested_specialization' in self.state['data']:
+            doctors = Doctor.objects.filter(
+                specialization__name=self.state['data']['suggested_specialization'],
+                is_active=True
+            )
+        else:
+            doctors = Doctor.objects.filter(is_active=True)
+
+        return {
+            'message': response_text + "\n\nHere are the available doctors again:",
+            'action': 'select_doctor',
+            'options': self._get_doctor_options(doctors)
+        }
+
+    def _handle_change_date(self, message, intent):
+        """Handle date change request intelligently"""
+        response_text = self.claude.generate_contextual_response(
+            message, intent, self.state['stage'], self.state['data']
+        )
+
+        # Clear time if it was set
+        if 'appointment_time' in self.state['data']:
+            del self.state['data']['appointment_time']
+
+        # Go back to date selection
+        self.state['stage'] = 'date_selection'
+
+        return {
+            'message': response_text + "\n\nPlease select a new date:",
+            'action': 'select_date',
+            'options': self._get_date_options(self.state['data']['doctor_id'])
+        }
+
+    def _handle_change_time(self, message, intent):
+        """Handle time change request intelligently"""
+        response_text = self.claude.generate_contextual_response(
+            message, intent, self.state['stage'], self.state['data']
+        )
+
+        # Go back to time selection
+        self.state['stage'] = 'time_selection'
+
+        # Get available slots for the selected date
+        date = datetime.strptime(self.state['data']['appointment_date'], '%Y-%m-%d').date()
+        slots = self._get_available_slots(self.state['data']['doctor_id'], date)
+
+        return {
+            'message': response_text + "\n\nHere are the available time slots:",
+            'action': 'select_time',
+            'options': slots
+        }
+
+    def _handle_go_back(self, message, intent):
+        """Handle go back request intelligently"""
+        response_text = self.claude.generate_contextual_response(
+            message, intent, self.state['stage'], self.state['data']
+        )
+
+        # Determine which stage to go back to
+        stage_order = ['greeting', 'symptoms', 'doctor_selection', 'date_selection',
+                      'time_selection', 'patient_details', 'confirmation']
+
+        current_index = stage_order.index(self.state['stage'])
+        if current_index > 0:
+            previous_stage = stage_order[current_index - 1]
+            self.state['stage'] = previous_stage
+
+            # Clear data for stages after the previous stage
+            if previous_stage == 'symptoms':
+                # Clear doctor, date, time
+                for key in ['doctor_id', 'doctor_name', 'appointment_date', 'appointment_time']:
+                    if key in self.state['data']:
+                        del self.state['data'][key]
+            elif previous_stage == 'doctor_selection':
+                # Clear date and time
+                for key in ['appointment_date', 'appointment_time']:
+                    if key in self.state['data']:
+                        del self.state['data'][key]
+            elif previous_stage == 'date_selection':
+                # Clear time
+                if 'appointment_time' in self.state['data']:
+                    del self.state['data']['appointment_time']
+
+            # Generate appropriate response based on previous stage
+            if previous_stage == 'symptoms':
+                return {
+                    'message': response_text + "\n\nWhat symptoms are you experiencing?",
+                    'action': 'ask_symptoms',
+                    'options': None
+                }
+            elif previous_stage == 'doctor_selection':
+                doctors = Doctor.objects.filter(
+                    specialization__name=self.state['data'].get('suggested_specialization', 'General Physician'),
+                    is_active=True
+                )
+                return {
+                    'message': response_text + "\n\nPlease select a doctor:",
+                    'action': 'select_doctor',
+                    'options': self._get_doctor_options(doctors)
+                }
+            elif previous_stage == 'date_selection':
+                return {
+                    'message': response_text + "\n\nWhen would you like to schedule your appointment?",
+                    'action': 'select_date',
+                    'options': self._get_date_options(self.state['data']['doctor_id'])
+                }
+
+        return {
+            'message': response_text,
+            'action': 'clarify',
+            'options': None
+        }
+
+    def _handle_cancel(self, message):
+        """Handle booking cancellation"""
+        # Reset state
+        self.state = {
+            'stage': 'greeting',
+            'conversation_history': self.state['conversation_history'],
+            'data': {},
+            'timestamp': datetime.now().isoformat()
+        }
+
+        return {
+            'message': "No problem! I've cancelled this booking. If you'd like to book an appointment later, just let me know. How else can I help you?",
+            'action': 'end',
+            'options': [
+                {'label': 'Start New Booking', 'value': 'new_booking'},
+                {'label': 'End Chat', 'value': 'done'}
+            ]
+        }
+
+    def _handle_clarification(self, message, intent):
+        """Handle clarification requests intelligently"""
+        response_text = self.claude.generate_contextual_response(
+            message, intent, self.state['stage'], self.state['data']
+        )
+
+        # Re-present the current stage options
+        stage = self.state['stage']
+
+        if stage == 'doctor_selection':
+            doctors = Doctor.objects.filter(is_active=True)
+            return {
+                'message': response_text + "\n\nHere are the available doctors:",
+                'action': 'select_doctor',
+                'options': self._get_doctor_options(doctors)
+            }
+        elif stage == 'date_selection':
+            return {
+                'message': response_text + "\n\nPlease select a date:",
+                'action': 'select_date',
+                'options': self._get_date_options(self.state['data']['doctor_id'])
+            }
+        elif stage == 'time_selection':
+            date = datetime.strptime(self.state['data']['appointment_date'], '%Y-%m-%d').date()
+            slots = self._get_available_slots(self.state['data']['doctor_id'], date)
+            return {
+                'message': response_text + "\n\nHere are the available time slots:",
+                'action': 'select_time',
+                'options': slots
+            }
+        else:
+            return {
+                'message': response_text,
+                'action': 'clarify',
+                'options': None
+            }
     
     def _get_specialization_options(self):
         """Get all available specializations"""
