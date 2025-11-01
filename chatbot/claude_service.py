@@ -11,6 +11,7 @@ import json
 class ClaudeService:
     """
     Service to interact with Google Gemini AI for chatbot conversations
+    Enhanced with intelligent intent detection and context awareness
     """
 
     def __init__(self):
@@ -146,3 +147,99 @@ Return ONLY the {info_type} value, nothing else. If not found, return "NOT_FOUND
         except Exception as e:
             print(f"Error extracting {info_type}: {str(e)}")
             return None
+
+    def detect_intent(self, user_message, current_stage, conversation_context):
+        """
+        Intelligently detect user intent: proceed, change, go_back, clarify
+        This makes the bot understand corrections and changes naturally
+        """
+        prompt = f"""You are analyzing a patient's message in a medical appointment booking conversation.
+
+Current Stage: {current_stage}
+Current Context: {json.dumps(conversation_context, indent=2)}
+
+Patient's Message: "{user_message}"
+
+Analyze the patient's intent. They might be:
+1. "proceed" - Providing requested information normally
+2. "change_doctor" - Wanting to change the selected doctor
+3. "change_date" - Wanting to change the selected date
+4. "change_time" - Wanting to change the selected time
+5. "go_back" - Wanting to go back to a previous step
+6. "clarify" - Asking for clarification or help
+7. "cancel" - Wanting to cancel the booking
+
+Look for phrases like:
+- "actually", "wait", "no", "change", "different", "instead", "wrong"
+- "go back", "previous", "earlier step"
+- "not that one", "other option"
+
+Return ONLY a JSON object:
+{{
+    "intent": "proceed|change_doctor|change_date|change_time|go_back|clarify|cancel",
+    "confidence": "high|medium|low",
+    "extracted_value": "the value they want to change to, if any",
+    "reasoning": "brief explanation"
+}}"""
+
+        try:
+            model = genai.GenerativeModel(self.model)
+            response = model.generate_content(prompt)
+            result_text = response.text.strip()
+
+            # Clean up response (remove markdown formatting)
+            if result_text.startswith('```json'):
+                result_text = result_text.split('```json')[1].split('```')[0].strip()
+            elif result_text.startswith('```'):
+                result_text = result_text.split('```')[1].split('```')[0].strip()
+
+            result = json.loads(result_text)
+            return result
+        except Exception as e:
+            print(f"Error detecting intent: {str(e)}")
+            # Default to proceed
+            return {
+                "intent": "proceed",
+                "confidence": "low",
+                "extracted_value": None,
+                "reasoning": "Error in detection, defaulting to proceed"
+            }
+
+    def generate_contextual_response(self, user_message, intent, stage, context):
+        """
+        Generate intelligent contextual response based on detected intent
+        """
+        system_prompt = """You are an intelligent medical appointment booking assistant.
+You can understand when patients want to change their mind, correct information, or go back.
+
+Guidelines:
+- Be empathetic and understanding when patients change their mind
+- Confirm what they want to change before proceeding
+- Use natural, conversational language
+- Be concise but friendly
+- Always acknowledge their intent before acting on it
+"""
+
+        prompt = f"""Current Stage: {stage}
+Patient's Intent: {intent['intent']} (Confidence: {intent['confidence']})
+Reasoning: {intent['reasoning']}
+
+Current Booking Context:
+{json.dumps(context, indent=2)}
+
+Patient says: "{user_message}"
+
+Generate a helpful, natural response that:
+1. Acknowledges their intent
+2. Confirms what they want to do
+3. Guides them to the next step
+
+Keep it conversational and brief (2-3 sentences max)."""
+
+        try:
+            model = genai.GenerativeModel(self.model)
+            response = model.generate_content(system_prompt + "\n\n" + prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"Error generating contextual response: {str(e)}")
+            return "I understand. Let me help you with that."
