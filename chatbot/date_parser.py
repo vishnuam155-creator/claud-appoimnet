@@ -19,11 +19,12 @@ class DateParser:
         text = text.lower().strip()
         
         # Try different parsing strategies
+        # ISO format should be checked first to avoid false matches in month_day parser
         parsers = [
+            self._parse_iso_format,
             self._parse_relative_day,
             self._parse_specific_date,
-            self._parse_month_day,
-            self._parse_iso_format
+            self._parse_month_day
         ]
         
         for parser in parsers:
