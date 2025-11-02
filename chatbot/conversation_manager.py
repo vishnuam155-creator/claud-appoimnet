@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from django.core.cache import cache
 from doctors.models import Doctor, DoctorSchedule
 from appointments.models import Appointment
+from patient_booking.models import PatientRecord
 from .claude_service import ClaudeService
 from .date_parser import DateParser
 import json
@@ -795,19 +796,23 @@ Is there anything else I can help you with?"""
         """Create appointment from collected data"""
         try:
             data = self.state['data']
-            
+
             # Debug: Check what data we have
             print(f"Creating appointment with data: {data}")
-            
+
             # Validate required fields
-            required_fields = ['doctor_id', 'patient_name', 'patient_phone', 
+            required_fields = ['doctor_id', 'patient_name', 'patient_phone',
                              'appointment_date', 'appointment_time']
-            
+
             for field in required_fields:
                 if field not in data:
                     print(f"ERROR: Missing required field: {field}")
                     return None
-            
+
+            # Get doctor info
+            doctor = Doctor.objects.get(id=data['doctor_id'])
+
+            # Create appointment
             appointment = Appointment.objects.create(
                 doctor_id=data['doctor_id'],
                 patient_name=data['patient_name'],
@@ -819,10 +824,26 @@ Is there anything else I can help you with?"""
                 status='confirmed',
                 session_id=self.session_id
             )
-            
+
             print(f"Appointment created successfully: {appointment.booking_id}")
+
+            # Also save to PatientRecord table
+            try:
+                patient_record = PatientRecord.objects.create(
+                    name=data['patient_name'],
+                    phone_number=data['patient_phone'],
+                    mail_id=data.get('patient_email', ''),
+                    doctor_name=doctor.name,
+                    department=doctor.specialization.name,
+                    appointment_date=data['appointment_date']
+                )
+                print(f"Patient record created successfully: {patient_record.booking_id}")
+            except Exception as pr_error:
+                print(f"Warning: Failed to create patient record: {str(pr_error)}")
+                # Don't fail the appointment creation if patient record fails
+
             return appointment
-            
+
         except Exception as e:
             print(f"ERROR creating appointment: {str(e)}")
             import traceback
