@@ -113,48 +113,44 @@ class ConversationManager:
         return response
     
     def _handle_greeting(self, message):
-        """Handle initial greeting"""
-        response_text = self.claude.generate_conversational_response(
-            message,
-            {'stage': 'greeting', 'conversation_history': self.state['conversation_history']}
-        )
-        
-        # Check if user mentioned symptoms
-        if any(word in message.lower() for word in ['pain', 'hurt', 'sick', 'fever', 'problem', 'issue']):
+        """Handle initial greeting with concise, direct responses"""
+        # Check if user mentioned symptoms directly
+        if any(word in message.lower() for word in ['pain', 'hurt', 'sick', 'fever', 'problem', 'issue', 'cough', 'headache']):
             self.state['stage'] = 'symptoms'
             return {
-                'message': response_text + "\n\nCould you tell me more about your symptoms so I can help you find the right doctor?",
+                'message': "I understand you're experiencing some health issues. Could you describe your symptoms in detail? This will help me find the right doctor for you.",
                 'action': 'ask_symptoms',
                 'options': None
             }
-        
+
+        # Standard greeting - concise and direct
         self.state['stage'] = 'symptoms'
         return {
-            'message': response_text + "\n\nHow can I help you today? You can:\n• Tell me about your symptoms\n• Choose a doctor specialization directly",
+            'message': "Hello! I'm here to help you book a medical appointment.\n\nPlease tell me:\n• What symptoms are you experiencing?\n• Or choose a doctor specialization below",
             'action': 'ask_symptoms',
             'options': self._get_specialization_options()
         }
     
     def _handle_symptoms(self, message):
-        """Handle symptom analysis"""
-        # Analyze symptoms using Claude
+        """Handle symptom analysis with concise responses"""
+        # Analyze symptoms using AI
         analysis = self.claude.analyze_symptoms(message)
-        
+
         self.state['data']['symptoms'] = message
         self.state['data']['suggested_specialization'] = analysis['specialization']
-        
+
         # Get doctors for this specialization
         doctors = Doctor.objects.filter(
             specialization__name=analysis['specialization'],
             is_active=True
         )
-        
+
         if doctors.exists():
             self.state['stage'] = 'doctor_selection'
-            
-            response_text = f"Based on your symptoms, I recommend seeing a {analysis['specialization']}. "
-            response_text += f"\n\n{analysis['reasoning']}\n\nHere are our available doctors:"
-            
+
+            # Concise response - straight to the point
+            response_text = f"Based on your symptoms, I recommend a **{analysis['specialization']}**.\n\nAvailable doctors:"
+
             return {
                 'message': response_text,
                 'action': 'select_doctor',
@@ -261,18 +257,33 @@ class ConversationManager:
     def _handle_patient_details(self, message):
         """Handle patient details collection"""
         data = self.state['data']
-        
+
         if 'patient_name' not in data:
+            # Validate name
+            if not message or len(message.strip()) < 2:
+                return {
+                    'message': "Please provide a valid name (at least 2 characters).",
+                    'action': 'collect_name',
+                    'options': None
+                }
             # Extract name
-            data['patient_name'] = message
+            data['patient_name'] = message.strip()
             return {
                 'message': f"Thank you, {message}! What's your phone number?",
                 'action': 'collect_phone',
                 'options': None
             }
         elif 'patient_phone' not in data:
+            # Validate phone number (basic validation)
+            phone = message.strip().replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+            if not phone.isdigit() or len(phone) < 10:
+                return {
+                    'message': "Please provide a valid phone number (at least 10 digits).",
+                    'action': 'collect_phone',
+                    'options': None
+                }
             # Extract phone
-            data['patient_phone'] = message
+            data['patient_phone'] = message.strip()
             return {
                 'message': "Would you like to provide your email address for appointment confirmations?",
                 'action': 'collect_email',
@@ -287,41 +298,31 @@ class ConversationManager:
                 # Skip email - set to empty and proceed to confirmation
                 data['patient_email'] = ''
                 self.state['stage'] = 'confirmation'
-                
+
+                # Validate all required data before creating appointment
+                validation_error = self._validate_booking_data()
+                if validation_error:
+                    return {
+                        'message': f"⚠️ {validation_error}\n\nPlease start over by providing your symptoms.",
+                        'action': 'error',
+                        'options': [
+                            {'label': '🔄 Start Over', 'value': 'restart'}
+                        ]
+                    }
+
                 # Create appointment
                 appointment = self._create_appointment()
-                
+
                 if appointment:
-                    # Format the date properly
-                    from datetime import datetime
-                    apt_date = datetime.strptime(str(appointment.appointment_date), '%Y-%m-%d')
-                    apt_time = datetime.strptime(str(appointment.appointment_time), '%H:%M:%S' if len(str(appointment.appointment_time)) > 5 else '%H:%M')
-                    
-                    return {
-                        'message': f"""✅ Appointment Confirmed!
-
-📋 Booking ID: {appointment.booking_id}
-👨‍⚕️ Doctor: Dr. {appointment.doctor.name}
-📅 Date: {apt_date.strftime('%A, %B %d, %Y')}
-⏰ Time: {apt_time.strftime('%I:%M %p')}
-👤 Patient: {appointment.patient_name}
-📞 Phone: {appointment.patient_phone}
-
-Please arrive 10 minutes early. You'll receive a confirmation SMS shortly.
-
-Is there anything else I can help you with?""",
-                        'action': 'booking_complete',
-                        'options': [
-                            {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
-                            {'label': '✅ Done', 'value': 'done'}
-                        ],
-                        'booking_id': appointment.booking_id
-                    }
+                    return self._format_confirmation_response(appointment)
                 else:
                     return {
-                        'message': "Sorry, there was an error creating your appointment. Please try again.",
+                        'message': "⚠️ Sorry, there was an error creating your appointment. Please try again or start over.",
                         'action': 'error',
-                        'options': None
+                        'options': [
+                            {'label': '🔄 Try Again', 'value': 'retry'},
+                            {'label': '↩️ Start Over', 'value': 'restart'}
+                        ]
                     }
             elif message == 'enter_email':
                 # User wants to enter email
@@ -331,50 +332,53 @@ Is there anything else I can help you with?""",
                     'options': None
                 }
             else:
-                # User typed an email directly
-                data['patient_email'] = message
+                # User typed an email directly - validate it
+                import re
+                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                if not re.match(email_pattern, message.strip()):
+                    return {
+                        'message': "Please provide a valid email address (e.g., example@email.com) or skip this step.",
+                        'action': 'collect_email',
+                        'options': [
+                            {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                            {'label': '⏭️ Skip Email', 'value': 'skip_email'}
+                        ]
+                    }
+
+                data['patient_email'] = message.strip()
                 self.state['stage'] = 'confirmation'
-                
+
+                # Validate all required data before creating appointment
+                validation_error = self._validate_booking_data()
+                if validation_error:
+                    return {
+                        'message': f"⚠️ {validation_error}\n\nPlease start over by providing your symptoms.",
+                        'action': 'error',
+                        'options': [
+                            {'label': '🔄 Start Over', 'value': 'restart'}
+                        ]
+                    }
+
                 # Create appointment
                 appointment = self._create_appointment()
-                
+
                 if appointment:
-                    # Format the date properly
-                    from datetime import datetime
-                    apt_date = datetime.strptime(str(appointment.appointment_date), '%Y-%m-%d')
-                    apt_time = datetime.strptime(str(appointment.appointment_time), '%H:%M:%S' if len(str(appointment.appointment_time)) > 5 else '%H:%M')
-                    
-                    return {
-                        'message': f"""✅ Appointment Confirmed!
-
-📋 Booking ID: {appointment.booking_id}
-👨‍⚕️ Doctor: Dr. {appointment.doctor.name}
-📅 Date: {apt_date.strftime('%A, %B %d, %Y')}
-⏰ Time: {apt_time.strftime('%I:%M %p')}
-👤 Patient: {appointment.patient_name}
-📞 Phone: {appointment.patient_phone}
-✉️ Email: {appointment.patient_email}
-
-Please arrive 10 minutes early. You'll receive a confirmation SMS shortly.
-
-Is there anything else I can help you with?""",
-                        'action': 'booking_complete',
-                        'options': [
-                            {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
-                            {'label': '✅ Done', 'value': 'done'}
-                        ],
-                        'booking_id': appointment.booking_id
-                    }
+                    return self._format_confirmation_response(appointment, include_email=True)
                 else:
                     return {
-                        'message': "Sorry, there was an error creating your appointment. Please try again.",
+                        'message': "⚠️ Sorry, there was an error creating your appointment. Please try again or start over.",
                         'action': 'error',
-                        'options': None
+                        'options': [
+                            {'label': '🔄 Try Again', 'value': 'retry'},
+                            {'label': '↩️ Start Over', 'value': 'restart'}
+                        ]
                     }
     
     def _handle_confirmation(self, message):
         """Handle post-booking actions"""
-        if message.lower() == 'new_booking':
+        message_lower = message.lower()
+
+        if message_lower in ['new_booking', 'restart']:
             # Reset state
             self.state = {
                 'stage': 'greeting',
@@ -383,8 +387,30 @@ Is there anything else I can help you with?""",
                 'timestamp': datetime.now().isoformat()
             }
             return {
-                'message': "Sure! Let's book another appointment. How can I help you?",
+                'message': "Sure! Let's start fresh. How can I help you book an appointment today?",
                 'action': 'ask_symptoms',
+                'options': None
+            }
+        elif message_lower == 'retry':
+            # Retry appointment creation by going back to patient details
+            self.state['stage'] = 'patient_details'
+            # Clear patient info to re-collect
+            if 'patient_email' in self.state['data']:
+                del self.state['data']['patient_email']
+            if 'patient_phone' in self.state['data']:
+                del self.state['data']['patient_phone']
+            if 'patient_name' in self.state['data']:
+                del self.state['data']['patient_name']
+
+            return {
+                'message': "Let's try again. What's your full name?",
+                'action': 'collect_name',
+                'options': None
+            }
+        elif message_lower == 'done':
+            return {
+                'message': "Thank you for using our booking system! Have a great day! 😊",
+                'action': 'end',
                 'options': None
             }
         else:
@@ -668,7 +694,92 @@ Is there anything else I can help you with?""",
             current_time += timedelta(minutes=schedule.slot_duration)
         
         return slots
-    
+
+    def _validate_booking_data(self):
+        """Validate all required booking data is present and valid"""
+        data = self.state['data']
+
+        # Check required fields
+        required_fields = {
+            'doctor_id': 'Doctor selection',
+            'patient_name': 'Patient name',
+            'patient_phone': 'Phone number',
+            'appointment_date': 'Appointment date',
+            'appointment_time': 'Appointment time'
+        }
+
+        for field, label in required_fields.items():
+            if field not in data or not data[field]:
+                return f"Missing {label}. Please complete all required information."
+
+        # Validate date is in the future
+        try:
+            from datetime import datetime
+            apt_date = datetime.strptime(data['appointment_date'], '%Y-%m-%d').date()
+            if apt_date < datetime.now().date():
+                return "Appointment date must be in the future."
+        except ValueError:
+            return "Invalid appointment date format."
+
+        return None  # No errors
+
+    def _format_confirmation_response(self, appointment, include_email=False):
+        """Format consistent confirmation response"""
+        try:
+            from datetime import datetime
+
+            # Safely parse date and time
+            apt_date = datetime.strptime(str(appointment.appointment_date), '%Y-%m-%d')
+
+            # Handle both HH:MM:SS and HH:MM formats
+            time_str = str(appointment.appointment_time)
+            if len(time_str) == 8:  # HH:MM:SS
+                apt_time = datetime.strptime(time_str, '%H:%M:%S')
+            else:  # HH:MM
+                apt_time = datetime.strptime(time_str, '%H:%M')
+
+            # Build confirmation message
+            message = f"""✅ Appointment Confirmed Successfully!
+
+📋 Booking ID: {appointment.booking_id}
+👨‍⚕️ Doctor: Dr. {appointment.doctor.name}
+📅 Date: {apt_date.strftime('%A, %B %d, %Y')}
+⏰ Time: {apt_time.strftime('%I:%M %p')}
+👤 Patient: {appointment.patient_name}
+📞 Phone: {appointment.patient_phone}"""
+
+            if include_email and appointment.patient_email:
+                message += f"\n✉️ Email: {appointment.patient_email}"
+
+            message += """
+
+✨ Please arrive 10 minutes early for your appointment.
+📱 You'll receive a confirmation SMS shortly.
+
+Is there anything else I can help you with?"""
+
+            return {
+                'message': message,
+                'action': 'booking_complete',
+                'options': [
+                    {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
+                    {'label': '✅ Done', 'value': 'done'}
+                ],
+                'booking_id': appointment.booking_id
+            }
+        except Exception as e:
+            print(f"Error formatting confirmation: {str(e)}")
+            # Fallback to basic confirmation
+            return {
+                'message': f"✅ Appointment Confirmed!\n\n📋 Booking ID: {appointment.booking_id}\n\nYour appointment has been successfully booked.",
+                'action': 'booking_complete',
+                'options': [
+                    {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
+                    {'label': '✅ Done', 'value': 'done'}
+                ],
+                'booking_id': appointment.booking_id
+            }
+
     def _create_appointment(self):
         """Create appointment from collected data"""
         try:
