@@ -7,6 +7,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('patient_booking.urls')),
     path('admin-panel/', include('admin_panel.urls')),
+    path('whatsapp/', include('whatsapp_integration.urls')),
 ]
 
 # Serve media files in development
