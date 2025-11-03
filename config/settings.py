@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'chatbot',
     'patient_booking',
     'admin_panel',
+    'whatsapp_integration',
 ]
 
 MIDDLEWARE = [
