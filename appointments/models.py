@@ -70,8 +70,16 @@ class Appointment(models.Model):
 
 class AppointmentHistory(models.Model):
     """
-    Track changes to appointments
+    Track changes to appointments including cancellations and reschedules
     """
+    ACTION_CHOICES = [
+        ('status_change', 'Status Change'),
+        ('reschedule', 'Reschedule'),
+        ('cancellation', 'Cancellation'),
+        ('creation', 'Creation'),
+        ('update', 'Update'),
+    ]
+
     appointment = models.ForeignKey(
         Appointment,
         on_delete=models.CASCADE,
@@ -81,10 +89,27 @@ class AppointmentHistory(models.Model):
     notes = models.TextField(blank=True)
     changed_by = models.CharField(max_length=100)  # 'patient', 'doctor', 'admin', 'system'
     changed_at = models.DateTimeField(auto_now_add=True)
-    
+
+    # Action type
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES,
+        default='status_change',
+        help_text="Type of change made to the appointment"
+    )
+
+    # For reschedule tracking
+    old_date = models.DateField(null=True, blank=True, help_text="Previous appointment date")
+    old_time = models.TimeField(null=True, blank=True, help_text="Previous appointment time")
+    new_date = models.DateField(null=True, blank=True, help_text="New appointment date")
+    new_time = models.TimeField(null=True, blank=True, help_text="New appointment time")
+
+    # Reason for change
+    reason = models.TextField(blank=True, help_text="Reason for cancellation or reschedule")
+
     class Meta:
         ordering = ['-changed_at']
         verbose_name_plural = "Appointment Histories"
-    
+
     def __str__(self):
-        return f"{self.appointment.booking_id} - {self.status} at {self.changed_at}"
+        return f"{self.appointment.booking_id} - {self.action} at {self.changed_at}"
