@@ -9,4 +9,5 @@ urlpatterns = [
     path('appointments/<str:booking_id>/', views.appointment_detail, name='appointment_detail'),
     path('appointments/<str:booking_id>/update/', views.update_appointment_status, name='update_status'),
     path('calendar/', views.calendar_view, name='calendar'),
+    path('api/appointments-by-date/', views.get_appointments_by_date, name='appointments_by_date'),
 ]
