@@ -115,22 +115,46 @@ def whatsapp_webhook(request):
         response_message = response['message']
         options = response.get('options', [])
 
+        # Filter out unavailable/booked slots for time selection
+        # Only show available slots as clickable options
+        available_options = []
+        booked_slots = []
+
+        for opt in options:
+            # Check if this option has availability info (for time slots)
+            if 'available' in opt:
+                if opt['available']:
+                    available_options.append(opt)
+                else:
+                    booked_slots.append(opt)
+            else:
+                # Not a time slot, include as-is
+                available_options.append(opt)
+
+        # Add booked slots info to message if any exist
+        if booked_slots:
+            booked_times = ', '.join([slot['label'] for slot in booked_slots])
+            response_message += f"\n\n⚠️ *Booked slots:* {booked_times}\n(These times are not available)"
+
+        # Use available options for interactive elements
+        display_options = available_options
+
         # Send interactive message based on number of options
-        if options and len(options) <= 3:
+        if display_options and len(display_options) <= 3:
             # Use interactive buttons (max 3)
             buttons = [
                 {
                     'id': opt.get('value', str(i)),
                     'title': opt['label'][:20]  # Max 20 chars for button
                 }
-                for i, opt in enumerate(options)
+                for i, opt in enumerate(display_options)
             ]
             result = whatsapp_service.send_interactive_buttons(
                 phone_number,
                 response_message,
                 buttons
             )
-        elif options and len(options) > 3:
+        elif display_options and len(display_options) > 3:
             # Use interactive list (for more than 3 options)
             rows = [
                 {
@@ -138,7 +162,7 @@ def whatsapp_webhook(request):
                     'title': opt['label'][:24],  # Max 24 chars for title
                     'description': opt.get('description', '')[:72]  # Max 72 chars
                 }
-                for i, opt in enumerate(options[:10])  # Max 10 items
+                for i, opt in enumerate(display_options[:10])  # Max 10 items
             ]
             sections = [{
                 'title': 'Options',
