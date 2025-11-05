@@ -219,14 +219,44 @@ class ConversationManager:
         elif action == 'cancel_appointment':
             # Cancel the appointment
             try:
+                from appointments.models import AppointmentHistory
+
+                # Validate appointment timing (minimum 2 hours notice)
+                validation = self._validate_appointment_timing(existing_appointment, action='cancel', minimum_hours=2)
+                if not validation['valid']:
+                    return {
+                        'message': validation['message'],
+                        'action': 'validation_failed',
+                        'options': [
+                            {'label': '📞 Contact Clinic', 'value': 'done'},
+                            {'label': '↩️ Back to Menu', 'value': 'restart'}
+                        ]
+                    }
+
+                # Store old status before cancellation
+                old_status = existing_appointment.status
+
+                # Update appointment status
                 existing_appointment.status = 'cancelled'
                 existing_appointment.save()
+
+                # Create appointment history record
+                AppointmentHistory.objects.create(
+                    appointment=existing_appointment,
+                    status='cancelled',
+                    notes=f'Appointment cancelled by patient via WhatsApp',
+                    changed_by='patient',
+                    action='cancellation',
+                    reason='Patient requested cancellation',
+                    old_date=existing_appointment.appointment_date,
+                    old_time=existing_appointment.appointment_time
+                )
 
                 apt_date = existing_appointment.appointment_date.strftime('%A, %B %d, %Y')
                 apt_time = existing_appointment.appointment_time.strftime('%I:%M %p')
 
                 return {
-                    'message': f"✅ Your appointment has been cancelled.\n\n📋 Booking ID: {existing_appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n📅 Date: {apt_date}\n⏰ Time: {apt_time}\n\nWould you like to book a new appointment?",
+                    'message': f"✅ Your appointment has been cancelled successfully.\n\n📋 Booking ID: {existing_appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n📅 Date: {apt_date}\n⏰ Time: {apt_time}\n\n📧 A cancellation confirmation will be sent to you shortly.\n\nWould you like to book a new appointment?",
                     'action': 'appointment_cancelled',
                     'options': [
                         {'label': '📅 Book New Appointment', 'value': 'new_booking'},
@@ -243,6 +273,18 @@ class ConversationManager:
 
         elif action == 'reschedule':
             # Start rescheduling process
+            # Validate appointment timing (minimum 2 hours notice)
+            validation = self._validate_appointment_timing(existing_appointment, action='reschedule', minimum_hours=2)
+            if not validation['valid']:
+                return {
+                    'message': validation['message'],
+                    'action': 'validation_failed',
+                    'options': [
+                        {'label': '📞 Contact Clinic', 'value': 'done'},
+                        {'label': '↩️ Back to Menu', 'value': 'restart'}
+                    ]
+                }
+
             self.state['data']['rescheduling_appointment_id'] = existing_appointment.id
             self.state['data']['doctor_id'] = existing_appointment.doctor.id
             self.state['stage'] = 'date_selection'
@@ -442,12 +484,21 @@ class ConversationManager:
                 }
 
             # Check if this time slot is already booked
-            existing_appointment = Appointment.objects.filter(
+            # If rescheduling, exclude the current appointment from the check
+            availability_check = Appointment.objects.filter(
                 doctor_id=doctor_id,
                 appointment_date=appointment_date,
                 appointment_time=parsed_time,
                 status__in=['pending', 'confirmed']
-            ).first()
+            )
+
+            # If rescheduling, exclude the appointment being rescheduled
+            if 'rescheduling_appointment_id' in self.state['data']:
+                availability_check = availability_check.exclude(
+                    id=self.state['data']['rescheduling_appointment_id']
+                )
+
+            existing_appointment = availability_check.first()
 
             if existing_appointment:
                 # Slot is already booked
@@ -466,20 +517,31 @@ class ConversationManager:
                 # Rescheduling - update the existing appointment
                 try:
                     appointment = Appointment.objects.get(id=self.state['data']['rescheduling_appointment_id'])
+
+                    # IMPORTANT: Store old values BEFORE updating the appointment
+                    old_date = appointment.appointment_date
+                    old_time = appointment.appointment_time
+                    old_formatted_date = old_date.strftime('%A, %B %d, %Y')
+                    old_formatted_time = old_time.strftime('%I:%M %p')
+
+                    # Update appointment with new date and time
                     appointment.appointment_date = appointment_date
                     appointment.appointment_time = parsed_time
                     appointment.save()
 
-                    # Create appointment history record
+                    # Create appointment history record with old and new values
                     from appointments.models import AppointmentHistory
                     AppointmentHistory.objects.create(
                         appointment=appointment,
-                        old_date=appointment.appointment_date,
-                        old_time=appointment.appointment_time,
+                        status=appointment.status,
+                        notes=f'Appointment rescheduled from {old_formatted_date} {old_formatted_time} to {appointment_date.strftime("%A, %B %d, %Y")} {parsed_time.strftime("%I:%M %p")}',
+                        changed_by='patient',
+                        action='reschedule',
+                        old_date=old_date,
+                        old_time=old_time,
                         new_date=appointment_date,
                         new_time=parsed_time,
-                        action='reschedule',
-                        reason='Patient requested reschedule'
+                        reason='Patient requested reschedule via WhatsApp'
                     )
 
                     self.state['stage'] = 'confirmation'
@@ -489,7 +551,7 @@ class ConversationManager:
                     formatted_time = parsed_time.strftime('%I:%M %p')
 
                     return {
-                        'message': f"✅ Appointment Rescheduled Successfully!\n\n📋 Booking ID: {appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {appointment.doctor.name}\n📅 New Date: {formatted_date}\n⏰ New Time: {formatted_time}\n👤 Patient: {appointment.patient_name}\n📞 Phone: {appointment.patient_phone}\n\n✨ You'll receive a confirmation shortly.",
+                        'message': f"✅ Appointment Rescheduled Successfully!\n\n📋 Booking ID: {appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {appointment.doctor.name}\n\n📅 Previous: {old_formatted_date} at {old_formatted_time}\n📅 New Date: {formatted_date}\n⏰ New Time: {formatted_time}\n\n👤 Patient: {appointment.patient_name}\n📞 Phone: {appointment.patient_phone}\n\n✨ You'll receive a confirmation shortly.",
                         'action': 'booking_complete',
                         'options': [
                             {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
@@ -1041,6 +1103,60 @@ class ConversationManager:
         except Exception as e:
             print(f"Error checking existing appointments: {str(e)}")
             return None
+
+    def _validate_appointment_timing(self, appointment, action='cancel', minimum_hours=2):
+        """
+        Validate if an appointment can be cancelled or rescheduled based on timing.
+
+        Args:
+            appointment: Appointment object
+            action: 'cancel' or 'reschedule'
+            minimum_hours: Minimum hours before appointment required for the action
+
+        Returns:
+            dict with 'valid' (bool) and 'message' (str) keys
+        """
+        try:
+            from datetime import datetime as dt
+
+            # Combine appointment date and time
+            appointment_datetime = dt.combine(
+                appointment.appointment_date,
+                appointment.appointment_time
+            )
+
+            # Get current time
+            now = dt.now()
+
+            # Calculate time difference
+            time_until_appointment = appointment_datetime - now
+            hours_until_appointment = time_until_appointment.total_seconds() / 3600
+
+            # Check if appointment is in the past
+            if hours_until_appointment < 0:
+                return {
+                    'valid': False,
+                    'message': f"⚠️ Cannot {action} an appointment that has already passed."
+                }
+
+            # Check minimum notice period
+            if hours_until_appointment < minimum_hours:
+                return {
+                    'valid': False,
+                    'message': f"⚠️ Sorry, appointments must be {action}led at least {minimum_hours} hours in advance.\n\nYour appointment is in {hours_until_appointment:.1f} hours.\n\nPlease contact the clinic directly for last-minute changes."
+                }
+
+            return {
+                'valid': True,
+                'message': ''
+            }
+
+        except Exception as e:
+            print(f"Error validating appointment timing: {str(e)}")
+            return {
+                'valid': True,  # Allow the action if validation fails
+                'message': ''
+            }
 
     def _validate_booking_data(self):
         """Validate all required booking data is present and valid"""
