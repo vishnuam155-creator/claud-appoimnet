@@ -22,21 +22,30 @@ class ClaudeService:
     def analyze_symptoms(self, symptoms_text):
         """
         Analyze patient symptoms and suggest appropriate doctor specialization
+        Uses intelligent keyword matching first, then AI as backup
         """
         specializations = Specialization.objects.all()
+
+        # STEP 1: Try keyword-based matching first (more reliable)
+        keyword_match = self._match_by_keywords(symptoms_text, specializations)
+        if keyword_match and keyword_match['confidence'] == 'high':
+            print(f"[Keyword Match] Found: {keyword_match['specialization']} (Score: {keyword_match.get('score', 0)})")
+            return keyword_match
+
+        # STEP 2: If no strong keyword match, use AI
         spec_info = "\n".join([
-            f"- {spec.name}: {spec.description or spec.keywords}"
+            f"- {spec.name}: {spec.keywords or spec.description}"
             for spec in specializations
         ])
 
         prompt = f"""You are a medical assistant helping patients find the right doctor.
 
-Available Specializations:
+Available Specializations with keywords:
 {spec_info}
 
 Patient says: "{symptoms_text}"
 
-Analyze the symptoms and determine which specialization would be most appropriate.
+Analyze the symptoms and determine which specialization would be most appropriate by matching keywords.
 Return your response in JSON format with this structure:
 {{
     "specialization": "exact name of the specialization",
@@ -44,7 +53,12 @@ Return your response in JSON format with this structure:
     "reasoning": "brief explanation of why this specialization is recommended"
 }}
 
-If no clear match, suggest "General Physician" as default.
+IMPORTANT: Match keywords carefully. For example:
+- "leg pain" should match Orthopedic (keywords: leg pain, bone, fracture, joint, back pain)
+- "chest pain" should match Cardiologist (keywords: chest pain, heart, blood pressure)
+- Only suggest "General Physician" if symptoms are general like fever, cold, flu
+
+Be precise with keyword matching.
 """
 
         try:
@@ -55,9 +69,25 @@ If no clear match, suggest "General Physician" as default.
 
             # Try to parse JSON
             try:
+                # Clean up markdown formatting if present
+                if response_text.startswith('```json'):
+                    response_text = response_text.split('```json')[1].split('```')[0].strip()
+                elif response_text.startswith('```'):
+                    response_text = response_text.split('```')[1].split('```')[0].strip()
+
                 result = json.loads(response_text)
+
+                # If AI result differs from keyword match, prefer keyword match if it exists
+                if keyword_match and keyword_match['specialization'] != result['specialization']:
+                    print(f"[AI vs Keyword Mismatch] AI: {result['specialization']}, Keyword: {keyword_match['specialization']}")
+                    # Prefer keyword match if it has medium confidence or higher
+                    if keyword_match.get('score', 0) > 0:
+                        print(f"[Using Keyword Match] {keyword_match['specialization']}")
+                        return keyword_match
+
                 return result
             except json.JSONDecodeError:
+                # Fallback parsing if JSON fails
                 for spec in specializations:
                     if spec.name.lower() in response_text.lower():
                         return {
@@ -65,6 +95,10 @@ If no clear match, suggest "General Physician" as default.
                             "confidence": "medium",
                             "reasoning": "Matched from AI response"
                         }
+
+                # Last resort: use keyword match if available
+                if keyword_match:
+                    return keyword_match
 
                 return {
                     "specialization": "General Physician",
@@ -74,11 +108,84 @@ If no clear match, suggest "General Physician" as default.
 
         except Exception as e:
             print(f"Error calling Gemini API: {str(e)}")
+            # If AI fails but we have keyword match, use it
+            if keyword_match:
+                return keyword_match
+
             return {
                 "specialization": "General Physician",
                 "confidence": "low",
                 "reasoning": "Error in AI analysis, using default"
             }
+
+    def _match_by_keywords(self, symptoms_text, specializations):
+        """
+        Match symptoms to specialization using keyword matching
+        Returns the best match with a confidence score
+        """
+        symptoms_lower = symptoms_text.lower()
+
+        # Common medical words that shouldn't be matched in isolation
+        common_words = {'pain', 'hurt', 'ache', 'problem', 'issue', 'feel', 'feeling', 'have', 'had', 'get', 'getting'}
+
+        # Score each specialization based on keyword matches
+        matches = []
+        for spec in specializations:
+            if not spec.keywords:
+                continue
+
+            keywords = [kw.strip().lower() for kw in spec.keywords.split(',')]
+            score = 0
+            matched_keywords = []
+
+            for keyword in keywords:
+                # Check for exact phrase match (highest priority)
+                if keyword in symptoms_lower:
+                    score += 3  # Higher score for exact match
+                    matched_keywords.append(keyword)
+                else:
+                    # Check for partial word match (only for meaningful words)
+                    keyword_words = set(keyword.split())
+                    symptoms_words = set(symptoms_lower.split())
+
+                    # Find matching words that are not common/generic
+                    meaningful_matches = keyword_words & symptoms_words - common_words
+
+                    if meaningful_matches:
+                        score += 1  # Lower score for partial match
+                        matched_keywords.append(keyword)
+
+            if score > 0:
+                matches.append({
+                    'specialization': spec.name,
+                    'score': score,
+                    'matched_keywords': matched_keywords,
+                    'total_keywords': len(keywords)
+                })
+
+        # Sort by score (descending)
+        matches.sort(key=lambda x: x['score'], reverse=True)
+
+        if not matches:
+            return None
+
+        # Get best match
+        best_match = matches[0]
+
+        # Determine confidence based on score
+        if best_match['score'] >= 3:
+            confidence = 'high'
+        elif best_match['score'] >= 2:
+            confidence = 'medium'
+        else:
+            confidence = 'low'
+
+        return {
+            'specialization': best_match['specialization'],
+            'confidence': confidence,
+            'reasoning': f"Matched keywords: {', '.join(best_match['matched_keywords'][:3])}",
+            'score': best_match['score']
+        }
 
     def generate_conversational_response(self, user_message, context):
         """
