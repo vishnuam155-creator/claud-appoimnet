@@ -2,9 +2,12 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.db.models import Q, Count
+from django.http import JsonResponse
 from datetime import datetime, timedelta
 from appointments.models import Appointment
 from doctors.models import Doctor
+import calendar
+import json
 
 
 @staff_member_required
@@ -130,26 +133,99 @@ def calendar_view(request):
     today = datetime.now().date()
     year = int(request.GET.get('year', today.year))
     month = int(request.GET.get('month', today.month))
-    
+
     # Get appointments for this month
     appointments = Appointment.objects.filter(
         appointment_date__year=year,
-        appointment_date__month=month,
-        status__in=['pending', 'confirmed']
-    ).select_related('doctor')
-    
-    # Group by date
+        appointment_date__month=month
+    ).select_related('doctor', 'doctor__specialization')
+
+    # Group by date with count (JSON serializable)
     appointments_by_date = {}
+    appointments_by_date_json = {}
     for apt in appointments:
         date_key = apt.appointment_date.strftime('%Y-%m-%d')
         if date_key not in appointments_by_date:
-            appointments_by_date[date_key] = []
-        appointments_by_date[date_key].append(apt)
-    
+            appointments_by_date[date_key] = {'count': 0, 'appointments': []}
+            appointments_by_date_json[date_key] = {'count': 0}
+        appointments_by_date[date_key]['count'] += 1
+        appointments_by_date[date_key]['appointments'].append(apt)
+        appointments_by_date_json[date_key]['count'] += 1
+
+    # Generate calendar data
+    cal = calendar.monthcalendar(year, month)
+    month_name = calendar.month_name[month]
+
+    # Calculate previous and next month/year
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+
+    if month == 12:
+        next_month, next_year = 1, year + 1
+    else:
+        next_month, next_year = month + 1, year
+
     context = {
         'year': year,
         'month': month,
+        'month_name': month_name,
+        'calendar_weeks': cal,
         'appointments_by_date': appointments_by_date,
+        'appointments_by_date_json': json.dumps(appointments_by_date_json),
+        'today': today.strftime('%Y-%m-%d'),
+        'prev_month': prev_month,
+        'prev_year': prev_year,
+        'next_month': next_month,
+        'next_year': next_year,
     }
-    
+
     return render(request, 'admin_panel/calendar.html', context)
+
+
+@staff_member_required
+def get_appointments_by_date(request):
+    """API endpoint to fetch appointments for a specific date"""
+    date_str = request.GET.get('date')
+
+    if not date_str:
+        return JsonResponse({'success': False, 'error': 'Date parameter is required'}, status=400)
+
+    try:
+        # Parse the date
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # Fetch appointments for this date
+        appointments = Appointment.objects.filter(
+            appointment_date=date_obj
+        ).select_related('doctor', 'doctor__specialization').order_by('appointment_time')
+
+        # Format the data
+        appointments_data = []
+        for apt in appointments:
+            appointments_data.append({
+                'booking_id': apt.booking_id,
+                'patient_name': apt.patient_name,
+                'patient_phone': apt.patient_phone,
+                'patient_email': apt.patient_email,
+                'doctor_name': apt.doctor.name,
+                'specialization': apt.doctor.specialization.name if apt.doctor.specialization else 'N/A',
+                'appointment_time': apt.appointment_time.strftime('%I:%M %p'),
+                'symptoms': apt.symptoms,
+                'status': apt.status,
+                'status_display': dict(Appointment.STATUS_CHOICES).get(apt.status, apt.status),
+                'created_at': apt.created_at.strftime('%Y-%m-%d %I:%M %p'),
+            })
+
+        return JsonResponse({
+            'success': True,
+            'date': date_str,
+            'appointments': appointments_data,
+            'count': len(appointments_data)
+        })
+
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'Invalid date format'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

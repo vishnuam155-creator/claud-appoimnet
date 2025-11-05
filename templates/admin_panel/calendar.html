@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appointment Calendar - Admin Panel</title>
+
+  <style>
+    /* ====== RESET & BASE ====== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+
+    /* ====== CONTAINER ====== */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ====== HEADER ====== */
+    .header {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 25px 30px;
+      border-radius: 15px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      color: #667eea;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 15px;
+    }
+
+    .nav-links a {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+
+    .nav-links a:hover {
+      background: #764ba2;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+    }
+
+    /* ====== MAIN LAYOUT ====== */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 25px;
+      align-items: start;
+    }
+
+    /* ====== CALENDAR SECTION ====== */
+    .calendar-section {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .calendar-header h2 {
+      font-size: 24px;
+      color: #333;
+    }
+
+    .month-nav {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .month-nav a {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      color: #667eea;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .month-nav a:hover {
+      background: #667eea;
+      color: white;
+      transform: scale(1.05);
+    }
+
+    .month-nav span {
+      color: #999;
+      font-size: 20px;
+    }
+
+    /* ====== CALENDAR GRID ====== */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+
+    .day-header {
+      text-align: center;
+      padding: 12px;
+      font-weight: 600;
+      color: #667eea;
+      background: #f8f9ff;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .day-cell {
+      aspect-ratio: 1;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: white;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .day-cell:hover {
+      border-color: #667eea;
+      transform: translateY(-3px);
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+    }
+
+    .day-cell.empty {
+      background: #f5f5f5;
+      cursor: default;
+      border-color: transparent;
+    }
+
+    .day-cell.empty:hover {
+      transform: none;
+      box-shadow: none;
+    }
+
+    .day-cell.today {
+      border-color: #667eea;
+      background: linear-gradient(135deg, #667eea15, #764ba215);
+    }
+
+    .day-cell.selected {
+      border-color: #764ba2;
+      background: linear-gradient(135deg, #667eea25, #764ba225);
+      box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
+    }
+
+    .day-number {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .appointment-badge {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 5px;
+    }
+
+    .no-appointments {
+      font-size: 11px;
+      color: #999;
+      margin-top: 5px;
+    }
+
+    /* ====== DETAILS PANEL ====== */
+    .details-panel {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      position: sticky;
+      top: 20px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+
+    .details-panel h3 {
+      font-size: 20px;
+      color: #667eea;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .placeholder {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    .placeholder-icon {
+      font-size: 60px;
+      margin-bottom: 15px;
+      opacity: 0.3;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #667eea;
+    }
+
+    .loading-spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .appointment-card {
+      background: #f8f9ff;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      border-left: 4px solid #667eea;
+      transition: all 0.3s ease;
+    }
+
+    .appointment-card:hover {
+      transform: translateX(5px);
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
+    }
+
+    .appointment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .appointment-time {
+      font-size: 16px;
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-confirmed { background: #d4edda; color: #155724; }
+    .status-cancelled { background: #f8d7da; color: #721c24; }
+    .status-completed { background: #d1ecf1; color: #0c5460; }
+    .status-no_show { background: #e2e3e5; color: #383d41; }
+
+    .appointment-info {
+      margin-bottom: 8px;
+      display: flex;
+      align-items: start;
+      gap: 8px;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .info-label {
+      font-weight: 600;
+      color: #333;
+      min-width: 80px;
+    }
+
+    .info-value {
+      flex: 1;
+    }
+
+    .booking-id {
+      font-family: monospace;
+      background: #e8e9f3;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .no-appointments-message {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    /* ====== SCROLLBAR ====== */
+    .details-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .details-panel::-webkit-scrollbar-thumb {
+      background: #667eea;
+      border-radius: 4px;
+    }
+
+    .details-panel::-webkit-scrollbar-thumb:hover {
+      background: #764ba2;
+    }
+
+    /* ====== RESPONSIVE ====== */
+    @media (max-width: 1200px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .details-panel {
+        position: relative;
+        top: 0;
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .calendar-grid {
+        gap: 5px;
+      }
+
+      .day-cell {
+        padding: 5px;
+      }
+
+      .day-number {
+        font-size: 14px;
+      }
+
+      .appointment-badge {
+        font-size: 9px;
+        padding: 2px 6px;
+      }
+
+      .calendar-section,
+      .details-panel {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>📅 Appointment Calendar</h1>
+      <div class="nav-links">
+        <a href="{% url 'admin_panel:dashboard' %}">Dashboard</a>
+        <a href="{% url 'admin_panel:appointment_list' %}">All Appointments</a>
+        <a href="/admin/">Django Admin</a>
+      </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+      <!-- Calendar Section -->
+      <div class="calendar-section">
+        <div class="calendar-header">
+          <h2>{{ month_name }} {{ year }}</h2>
+          <div class="month-nav">
+            <a href="?year={{ prev_year }}&month={{ prev_month }}">← Previous</a>
+            <span>|</span>
+            <a href="?year={{ next_year }}&month={{ next_month }}">Next →</a>
+          </div>
+        </div>
+
+        <div class="calendar-grid">
+          <!-- Day Headers -->
+          <div class="day-header">Sun</div>
+          <div class="day-header">Mon</div>
+          <div class="day-header">Tue</div>
+          <div class="day-header">Wed</div>
+          <div class="day-header">Thu</div>
+          <div class="day-header">Fri</div>
+          <div class="day-header">Sat</div>
+
+          <!-- Calendar Days -->
+          {% for week in calendar_weeks %}
+            {% for day in week %}
+              {% if day == 0 %}
+                <div class="day-cell empty"></div>
+              {% else %}
+                {% load static %}
+                <div class="day-cell{% if year|stringformat:'d' == today|slice:':4' and month|stringformat:'d' == today|slice:'5:7' and day|stringformat:'d' == today|slice:'8:10' %} today{% endif %}"
+                     data-date="{{ year }}-{% if month < 10 %}0{% endif %}{{ month }}-{% if day < 10 %}0{% endif %}{{ day }}"
+                     data-year="{{ year }}"
+                     data-month="{{ month }}"
+                     data-day="{{ day }}"
+                     onclick="loadAppointments(this.getAttribute('data-date'))">
+                  <div class="day-number">{{ day }}</div>
+                  <div id="badge-{{ year }}-{{ month }}-{{ day }}" class="no-appointments">-</div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Details Panel -->
+      <div class="details-panel" id="details-panel">
+        <div class="placeholder">
+          <div class="placeholder-icon">📋</div>
+          <p>Click on a date to view appointments</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let selectedDate = null;
+
+    // Format date for display
+    function formatDateDisplay(dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      return date.toLocaleDateString('en-US', options);
+    }
+
+    // Load appointments for a specific date
+    async function loadAppointments(dateStr) {
+      // Remove previous selection
+      document.querySelectorAll('.day-cell.selected').forEach(cell => {
+        cell.classList.remove('selected');
+      });
+
+      // Add selection to clicked date
+      const clickedCell = document.querySelector(`[data-date="${dateStr}"]`);
+      if (clickedCell) {
+        clickedCell.classList.add('selected');
+      }
+
+      selectedDate = dateStr;
+      const panel = document.getElementById('details-panel');
+
+      // Show loading state
+      panel.innerHTML = `
+        <div class="loading">
+          <div class="loading-spinner"></div>
+          <p>Loading appointments...</p>
+        </div>
+      `;
+
+      try {
+        const response = await fetch(`/admin-panel/api/appointments-by-date/?date=${dateStr}`);
+        const data = await response.json();
+
+        if (data.success) {
+          displayAppointments(data.date, data.appointments);
+        } else {
+          panel.innerHTML = `
+            <div class="no-appointments-message">
+              <p style="color: #dc3545;">Error: ${data.error}</p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        panel.innerHTML = `
+          <div class="no-appointments-message">
+            <p style="color: #dc3545;">Failed to load appointments. Please try again.</p>
+          </div>
+        `;
+      }
+    }
+
+    // Display appointments in the details panel
+    function displayAppointments(dateStr, appointments) {
+      const panel = document.getElementById('details-panel');
+      const dateDisplay = formatDateDisplay(dateStr);
+
+      if (appointments.length === 0) {
+        panel.innerHTML = `
+          <h3>📅 ${dateDisplay}</h3>
+          <div class="no-appointments-message">
+            <div style="font-size: 48px; margin-bottom: 10px;">📭</div>
+            <p>No appointments scheduled for this date.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <h3>📅 ${dateDisplay}</h3>
+        <p style="margin-bottom: 20px; color: #666; font-size: 14px;">
+          ${appointments.length} appointment${appointments.length > 1 ? 's' : ''} scheduled
+        </p>
+      `;
+
+      appointments.forEach(apt => {
+        html += `
+          <div class="appointment-card">
+            <div class="appointment-header">
+              <div class="appointment-time">🕐 ${apt.appointment_time}</div>
+              <div class="status-badge status-${apt.status}">${apt.status_display}</div>
+            </div>
+
+            <div class="appointment-info">
+              <span class="info-label">Patient:</span>
+              <span class="info-value">${apt.patient_name}</span>
+            </div>
+
+            <div class="appointment-info">
+              <span class="info-label">Phone:</span>
+              <span class="info-value">${apt.patient_phone}</span>
+            </div>
+
+            ${apt.patient_email ? `
+              <div class="appointment-info">
+                <span class="info-label">Email:</span>
+                <span class="info-value">${apt.patient_email}</span>
+              </div>
+            ` : ''}
+
+            <div class="appointment-info">
+              <span class="info-label">Doctor:</span>
+              <span class="info-value">${apt.doctor_name}</span>
+            </div>
+
+            <div class="appointment-info">
+              <span class="info-label">Specialty:</span>
+              <span class="info-value">${apt.specialization}</span>
+            </div>
+
+            ${apt.symptoms ? `
+              <div class="appointment-info">
+                <span class="info-label">Symptoms:</span>
+                <span class="info-value">${apt.symptoms}</span>
+              </div>
+            ` : ''}
+
+            <div class="appointment-info">
+              <span class="info-label">Booking ID:</span>
+              <span class="info-value"><span class="booking-id">${apt.booking_id}</span></span>
+            </div>
+
+            <div class="appointment-info">
+              <span class="info-label">Booked:</span>
+              <span class="info-value">${apt.created_at}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      panel.innerHTML = html;
+    }
+
+    // Auto-load today's appointments on page load
+    window.onload = function() {
+      const todayCell = document.querySelector('.day-cell.today');
+      if (todayCell) {
+        const todayDate = todayCell.getAttribute('data-date');
+        loadAppointments(todayDate);
+      }
+    };
+  </script>
+
+  <script>
+    // Appointment data from server
+    const appointmentsByDate = {{ appointments_by_date_json|safe }};
+
+    // Update appointment badges after page load
+    document.addEventListener('DOMContentLoaded', function() {
+      for (const [dateKey, data] of Object.entries(appointmentsByDate)) {
+        const [year, month, day] = dateKey.split('-');
+        const badge = document.getElementById(`badge-${year}-${parseInt(month)}-${parseInt(day)}`);
+        if (badge) {
+          badge.className = 'appointment-badge';
+          badge.textContent = `${data.count} apt${data.count > 1 ? 's' : ''}`;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
