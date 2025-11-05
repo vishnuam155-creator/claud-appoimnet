@@ -64,11 +64,18 @@ def whatsapp_webhook(request):
         if message_type == 'text':
             message_body = message.get('text', {}).get('body', '').strip()
         elif message_type == 'interactive':
-            # Handle button replies
+            # Handle interactive replies (buttons and lists)
             interactive = message.get('interactive', {})
-            if interactive.get('type') == 'button_reply':
+            interactive_type = interactive.get('type', '')
+
+            if interactive_type == 'button_reply':
+                # Handle button reply
                 button_reply = interactive.get('button_reply', {})
-                message_body = button_reply.get('title', '')
+                message_body = button_reply.get('id', '')  # Use ID instead of title
+            elif interactive_type == 'list_reply':
+                # Handle list reply
+                list_reply = interactive.get('list_reply', {})
+                message_body = list_reply.get('id', '')  # Use ID instead of title
             else:
                 message_body = ''
         else:
@@ -101,25 +108,52 @@ def whatsapp_webhook(request):
         )
 
         # Process message through chatbot
-        conversation_manager = ConversationManager()
-        response = conversation_manager.process_message(
-            message=message_body,
-            session_id=session.session_id
-        )
+        conversation_manager = ConversationManager(session.session_id)
+        response = conversation_manager.process_message(message_body)
 
-        # Format response message
+        # Format and send response message with interactive elements
         response_message = response['message']
+        options = response.get('options', [])
 
-        # Add options if available
-        if response.get('options'):
-            options_text = "\n\n" + "\n".join([
-                f"{i+1}. {opt['label']}"
-                for i, opt in enumerate(response['options'])
-            ])
-            response_message += options_text + "\n\nReply with the number of your choice."
-
-        # Send response back via WhatsApp
-        result = whatsapp_service.send_message(phone_number, response_message)
+        # Send interactive message based on number of options
+        if options and len(options) <= 3:
+            # Use interactive buttons (max 3)
+            buttons = [
+                {
+                    'id': opt.get('value', str(i)),
+                    'title': opt['label'][:20]  # Max 20 chars for button
+                }
+                for i, opt in enumerate(options)
+            ]
+            result = whatsapp_service.send_interactive_buttons(
+                phone_number,
+                response_message,
+                buttons
+            )
+        elif options and len(options) > 3:
+            # Use interactive list (for more than 3 options)
+            rows = [
+                {
+                    'id': opt.get('value', str(i)),
+                    'title': opt['label'][:24],  # Max 24 chars for title
+                    'description': opt.get('description', '')[:72]  # Max 72 chars
+                }
+                for i, opt in enumerate(options[:10])  # Max 10 items
+            ]
+            sections = [{
+                'title': 'Options',
+                'rows': rows
+            }]
+            result = whatsapp_service.send_interactive_list(
+                phone_number,
+                header='',  # Optional header
+                body=response_message,
+                button_text='Select Option',
+                sections=sections
+            )
+        else:
+            # No options - send plain text
+            result = whatsapp_service.send_message(phone_number, response_message)
 
         # Log outbound message
         if result:

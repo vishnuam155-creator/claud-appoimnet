@@ -181,6 +181,80 @@ class WhatsAppService:
             print(f"Error sending interactive message: {str(e)}")
             return None
 
+    def send_interactive_list(self, to_number: str, header: str, body: str, button_text: str, sections: List[Dict]) -> Optional[Dict]:
+        """
+        Send a WhatsApp message with interactive list (Meta API feature)
+
+        Args:
+            to_number: Phone number
+            header: Header text (optional)
+            body: Body text
+            button_text: Text for the list button (e.g., "Select Option")
+            sections: List of sections, each with 'title' and 'rows' (list of items with 'id', 'title', 'description')
+
+        Returns:
+            Dict with message details or None if failed
+        """
+        if not self.access_token or not self.phone_number_id:
+            print("Meta WhatsApp credentials not configured.")
+            return None
+
+        try:
+            # Remove 'whatsapp:' prefix if present
+            if to_number.startswith('whatsapp:'):
+                to_number = to_number.replace('whatsapp:', '')
+
+            clean_number = to_number.replace('+', '')
+
+            # Prepare interactive list message
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": clean_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {
+                        "text": body
+                    },
+                    "action": {
+                        "button": button_text[:20],  # Max 20 chars
+                        "sections": sections
+                    }
+                }
+            }
+
+            # Add header if provided
+            if header:
+                payload["interactive"]["header"] = {
+                    "type": "text",
+                    "text": header[:60]  # Max 60 chars
+                }
+
+            response = requests.post(
+                self.api_url,
+                headers=self.headers,
+                json=payload,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    'sid': result.get('messages', [{}])[0].get('id', ''),
+                    'status': 'sent',
+                    'to': to_number,
+                    'body': body
+                }
+            else:
+                print(f"Error sending interactive list: {response.status_code} - {response.text}")
+                # Fallback to text message with numbered options
+                return self.send_message(to_number, body)
+
+        except Exception as e:
+            print(f"Error sending interactive list: {str(e)}")
+            return None
+
     def format_confirmation_message(self, booking_details: Dict) -> str:
         """
         Format booking confirmation message
