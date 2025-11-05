@@ -101,11 +101,8 @@ def whatsapp_webhook(request):
         )
 
         # Process message through chatbot
-        conversation_manager = ConversationManager()
-        response = conversation_manager.process_message(
-            message=message_body,
-            session_id=session.session_id
-        )
+        conversation_manager = ConversationManager(session.session_id)
+        response = conversation_manager.process_message(message_body)
 
         # Format response message
         response_message = response['message']
