@@ -1,6 +1,7 @@
 """
 Views for handling WhatsApp webhook and web interface
 """
+import json
 import uuid
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -14,23 +15,71 @@ from chatbot.conversation_manager import ConversationManager
 
 
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["GET", "POST"])
 def whatsapp_webhook(request):
     """
-    Webhook endpoint to receive incoming WhatsApp messages from Twilio
+    Webhook endpoint to receive incoming WhatsApp messages from Meta
 
-    Twilio sends POST requests to this endpoint when messages are received
+    Meta sends GET requests for webhook verification and POST for messages
     """
-    try:
-        # Parse Twilio webhook data
-        from_number = request.POST.get('From', '')  # Format: whatsapp:+1234567890
-        to_number = request.POST.get('To', '')
-        message_body = request.POST.get('Body', '').strip()
-        message_sid = request.POST.get('MessageSid', '')
-        media_url = request.POST.get('MediaUrl0', None)
+    # Handle webhook verification (GET request)
+    if request.method == 'GET':
+        mode = request.GET.get('hub.mode', '')
+        token = request.GET.get('hub.verify_token', '')
+        challenge = request.GET.get('hub.challenge', '')
 
-        # Extract phone number without 'whatsapp:' prefix
-        phone_number = from_number.replace('whatsapp:', '')
+        verified_challenge = whatsapp_service.verify_webhook(mode, token, challenge)
+        if verified_challenge:
+            return HttpResponse(verified_challenge, content_type='text/plain')
+        else:
+            return HttpResponse('Verification failed', status=403)
+
+    # Handle incoming messages (POST request)
+    try:
+        # Parse Meta webhook data (JSON format)
+        body = json.loads(request.body.decode('utf-8'))
+
+        # Extract message data from Meta webhook structure
+        entry = body.get('entry', [])
+        if not entry:
+            return HttpResponse(status=200)
+
+        changes = entry[0].get('changes', [])
+        if not changes:
+            return HttpResponse(status=200)
+
+        value = changes[0].get('value', {})
+        messages = value.get('messages', [])
+
+        if not messages:
+            return HttpResponse(status=200)
+
+        # Process the first message
+        message = messages[0]
+        message_id = message.get('id', '')
+        from_number = message.get('from', '')  # Phone number without prefix
+        message_type = message.get('type', 'text')
+
+        # Extract message content based on type
+        if message_type == 'text':
+            message_body = message.get('text', {}).get('body', '').strip()
+        elif message_type == 'interactive':
+            # Handle button replies
+            interactive = message.get('interactive', {})
+            if interactive.get('type') == 'button_reply':
+                button_reply = interactive.get('button_reply', {})
+                message_body = button_reply.get('title', '')
+            else:
+                message_body = ''
+        else:
+            message_body = ''
+
+        # Get metadata
+        metadata = value.get('metadata', {})
+        to_number = metadata.get('display_phone_number', '')
+
+        # Format phone number with + prefix
+        phone_number = f'+{from_number}' if not from_number.startswith('+') else from_number
 
         # Get or create session
         session, created = WhatsAppSession.objects.get_or_create(
@@ -43,13 +92,12 @@ def whatsapp_webhook(request):
 
         # Log incoming message
         WhatsAppMessage.objects.create(
-            message_sid=message_sid,
+            message_sid=message_id,
             from_number=phone_number,
-            to_number=to_number.replace('whatsapp:', ''),
+            to_number=to_number,
             body=message_body,
             direction='inbound',
-            session_id=session.session_id,
-            media_url=media_url
+            session_id=session.session_id
         )
 
         # Process message through chatbot
@@ -71,13 +119,13 @@ def whatsapp_webhook(request):
             response_message += options_text + "\n\nReply with the number of your choice."
 
         # Send response back via WhatsApp
-        result = whatsapp_service.send_message(from_number, response_message)
+        result = whatsapp_service.send_message(phone_number, response_message)
 
         # Log outbound message
         if result:
             WhatsAppMessage.objects.create(
                 message_sid=result.get('sid'),
-                from_number=to_number.replace('whatsapp:', ''),
+                from_number=to_number,
                 to_number=phone_number,
                 body=response_message,
                 direction='outbound',
@@ -95,11 +143,13 @@ def whatsapp_webhook(request):
             except Appointment.DoesNotExist:
                 pass
 
-        # Return empty response (Twilio expects 200 OK)
+        # Return empty response (Meta expects 200 OK)
         return HttpResponse(status=200)
 
     except Exception as e:
         print(f"Error processing WhatsApp webhook: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return HttpResponse(status=500)
 
 
@@ -107,14 +157,33 @@ def whatsapp_webhook(request):
 @require_http_methods(["POST"])
 def whatsapp_status_webhook(request):
     """
-    Webhook endpoint to receive message status updates from Twilio
+    Webhook endpoint to receive message status updates from Meta
     """
     try:
-        message_sid = request.POST.get('MessageSid', '')
-        message_status = request.POST.get('MessageStatus', '')
+        # Parse Meta status update (JSON format)
+        body = json.loads(request.body.decode('utf-8'))
+
+        entry = body.get('entry', [])
+        if not entry:
+            return HttpResponse(status=200)
+
+        changes = entry[0].get('changes', [])
+        if not changes:
+            return HttpResponse(status=200)
+
+        value = changes[0].get('value', {})
+        statuses = value.get('statuses', [])
+
+        if not statuses:
+            return HttpResponse(status=200)
+
+        # Process status update
+        status_update = statuses[0]
+        message_id = status_update.get('id', '')
+        message_status = status_update.get('status', '')
 
         # Update message status
-        WhatsAppMessage.objects.filter(message_sid=message_sid).update(
+        WhatsAppMessage.objects.filter(message_sid=message_id).update(
             status=message_status
         )
 

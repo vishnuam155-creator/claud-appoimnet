@@ -7,7 +7,7 @@ from . import views
 app_name = 'whatsapp_integration'
 
 urlpatterns = [
-    # Twilio webhook endpoints
+    # Meta WhatsApp webhook endpoints
     path('webhook/', views.whatsapp_webhook, name='webhook'),
     path('webhook/status/', views.whatsapp_status_webhook, name='status_webhook'),
 
