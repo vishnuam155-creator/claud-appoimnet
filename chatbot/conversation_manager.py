@@ -126,7 +126,57 @@ class ConversationManager:
         return response
     
     def _handle_greeting(self, message):
-        """Handle initial greeting with concise, direct responses"""
+        """Handle initial greeting with concise, direct responses and appointment context"""
+        # Handle appointment context actions
+        if message.lower() in ['new_booking', 'cancel_appointment', 'reschedule', 'details']:
+            return self._handle_appointment_action(message.lower())
+
+        # Check for existing appointments for this patient
+        existing_appointment = self._check_existing_appointments()
+
+        # If patient has an upcoming appointment, provide context
+        if existing_appointment:
+            apt_date = existing_appointment.appointment_date
+            apt_time = existing_appointment.appointment_time
+            doctor_name = existing_appointment.doctor.name
+            booking_id = existing_appointment.booking_id
+
+            # Format appointment details
+            apt_datetime = datetime.combine(apt_date, apt_time)
+            formatted_date = apt_date.strftime('%A, %B %d, %Y')
+            formatted_time = apt_time.strftime('%I:%M %p')
+
+            # Check if appointment is today or upcoming
+            today = datetime.now().date()
+            if apt_date == today:
+                time_context = "today"
+            elif apt_date == today + timedelta(days=1):
+                time_context = "tomorrow"
+            else:
+                days_until = (apt_date - today).days
+                time_context = f"in {days_until} days"
+
+            # Provide appointment context with options
+            appointment_message = f"👋 Hello! I see you have an upcoming appointment:\n\n"
+            appointment_message += f"📋 Booking ID: {booking_id}\n"
+            appointment_message += f"👨‍⚕️ Doctor: Dr. {doctor_name}\n"
+            appointment_message += f"📅 Date: {formatted_date} ({time_context})\n"
+            appointment_message += f"⏰ Time: {formatted_time}\n\n"
+            appointment_message += "What would you like to do?"
+
+            self.state['data']['existing_appointment_id'] = existing_appointment.id
+
+            return {
+                'message': appointment_message,
+                'action': 'appointment_context',
+                'options': [
+                    {'label': '📅 Book New Appointment', 'value': 'new_booking'},
+                    {'label': '❌ Cancel Appointment', 'value': 'cancel_appointment'},
+                    {'label': '✏️ Reschedule', 'value': 'reschedule'},
+                    {'label': 'ℹ️ Appointment Details', 'value': 'details'}
+                ]
+            }
+
         # Check if user mentioned symptoms directly
         if any(word in message.lower() for word in ['pain', 'hurt', 'sick', 'fever', 'problem', 'issue', 'cough', 'headache']):
             self.state['stage'] = 'symptoms'
@@ -143,7 +193,103 @@ class ConversationManager:
             'action': 'ask_symptoms',
             'options': self._get_specialization_options()
         }
-    
+
+    def _handle_appointment_action(self, action):
+        """Handle actions related to existing appointments"""
+        existing_appointment = self._check_existing_appointments()
+
+        if not existing_appointment:
+            # No appointment found, proceed with new booking
+            self.state['stage'] = 'symptoms'
+            return {
+                'message': "I couldn't find an existing appointment. Let's create a new one!\n\nPlease tell me:\n• What symptoms are you experiencing?\n• Or choose a doctor specialization below",
+                'action': 'ask_symptoms',
+                'options': self._get_specialization_options()
+            }
+
+        if action == 'new_booking':
+            # Start new booking process
+            self.state['stage'] = 'symptoms'
+            return {
+                'message': "Great! Let's book a new appointment.\n\nPlease tell me:\n• What symptoms are you experiencing?\n• Or choose a doctor specialization below",
+                'action': 'ask_symptoms',
+                'options': self._get_specialization_options()
+            }
+
+        elif action == 'cancel_appointment':
+            # Cancel the appointment
+            try:
+                existing_appointment.status = 'cancelled'
+                existing_appointment.save()
+
+                apt_date = existing_appointment.appointment_date.strftime('%A, %B %d, %Y')
+                apt_time = existing_appointment.appointment_time.strftime('%I:%M %p')
+
+                return {
+                    'message': f"✅ Your appointment has been cancelled.\n\n📋 Booking ID: {existing_appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n📅 Date: {apt_date}\n⏰ Time: {apt_time}\n\nWould you like to book a new appointment?",
+                    'action': 'appointment_cancelled',
+                    'options': [
+                        {'label': '📅 Book New Appointment', 'value': 'new_booking'},
+                        {'label': '✅ Done', 'value': 'done'}
+                    ]
+                }
+            except Exception as e:
+                print(f"Error cancelling appointment: {str(e)}")
+                return {
+                    'message': "⚠️ Sorry, there was an error cancelling your appointment. Please contact support or try again later.",
+                    'action': 'error',
+                    'options': None
+                }
+
+        elif action == 'reschedule':
+            # Start rescheduling process
+            self.state['data']['rescheduling_appointment_id'] = existing_appointment.id
+            self.state['data']['doctor_id'] = existing_appointment.doctor.id
+            self.state['stage'] = 'date_selection'
+
+            return {
+                'message': f"Let's reschedule your appointment with Dr. {existing_appointment.doctor.name}.\n\nPlease choose a new date:",
+                'action': 'select_date',
+                'options': self._get_date_options(existing_appointment.doctor.id, days=7)
+            }
+
+        elif action == 'details':
+            # Show full appointment details
+            apt_date = existing_appointment.appointment_date.strftime('%A, %B %d, %Y')
+            apt_time = existing_appointment.appointment_time.strftime('%I:%M %p')
+
+            details_message = f"📋 *Appointment Details*\n\n"
+            details_message += f"🆔 Booking ID: {existing_appointment.booking_id}\n"
+            details_message += f"👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n"
+            details_message += f"🏥 Specialization: {existing_appointment.doctor.specialization.name}\n"
+            details_message += f"📅 Date: {apt_date}\n"
+            details_message += f"⏰ Time: {apt_time}\n"
+            details_message += f"👤 Patient: {existing_appointment.patient_name}\n"
+            details_message += f"📞 Phone: {existing_appointment.patient_phone}\n"
+
+            if existing_appointment.patient_email:
+                details_message += f"✉️ Email: {existing_appointment.patient_email}\n"
+
+            if existing_appointment.symptoms:
+                details_message += f"💬 Symptoms: {existing_appointment.symptoms}\n"
+
+            details_message += f"📊 Status: {existing_appointment.status.title()}"
+
+            return {
+                'message': details_message,
+                'action': 'show_details',
+                'options': [
+                    {'label': '📅 Book New Appointment', 'value': 'new_booking'},
+                    {'label': '❌ Cancel This Appointment', 'value': 'cancel_appointment'},
+                    {'label': '✏️ Reschedule', 'value': 'reschedule'},
+                    {'label': '✅ Done', 'value': 'done'}
+                ]
+            }
+
+        else:
+            # Unknown action
+            return self._handle_greeting("Hello")
+
     def _handle_symptoms(self, message):
         """Handle symptom analysis with concise responses"""
         # Analyze symptoms using AI
@@ -257,15 +403,132 @@ class ConversationManager:
             }
     
     def _handle_time_selection(self, message):
-        """Handle time slot selection"""
-        self.state['data']['appointment_time'] = message
-        self.state['stage'] = 'patient_details'
-        
-        return {
-            'message': f"Perfect! Your appointment is scheduled for {self.state['data']['appointment_date']} at {message}.\n\nNow, I need some details:\n\nWhat's your full name?",
-            'action': 'collect_name',
-            'options': None
-        }
+        """Handle time slot selection with validation"""
+        from datetime import datetime as dt
+
+        # Get the selected time and validate it's available
+        selected_time = message.strip()
+        appointment_date = dt.strptime(self.state['data']['appointment_date'], '%Y-%m-%d').date()
+        doctor_id = self.state['data']['doctor_id']
+
+        # Check if the selected time is available
+        try:
+            # Parse the time (could be in format "14:30" or "02:30 PM")
+            time_formats = ['%H:%M', '%I:%M %p', '%I:%M%p']
+            parsed_time = None
+
+            for fmt in time_formats:
+                try:
+                    parsed_time = dt.strptime(selected_time, fmt).time()
+                    break
+                except ValueError:
+                    continue
+
+            if not parsed_time:
+                # Try to extract time from the message
+                selected_time = selected_time.replace(' ', '')
+                for fmt in time_formats:
+                    try:
+                        parsed_time = dt.strptime(selected_time, fmt).time()
+                        break
+                    except ValueError:
+                        continue
+
+            if not parsed_time:
+                return {
+                    'message': "⚠️ Invalid time format. Please select a time from the available options.",
+                    'action': 'select_time',
+                    'options': self._get_available_slots(doctor_id, appointment_date)
+                }
+
+            # Check if this time slot is already booked
+            existing_appointment = Appointment.objects.filter(
+                doctor_id=doctor_id,
+                appointment_date=appointment_date,
+                appointment_time=parsed_time,
+                status__in=['pending', 'confirmed']
+            ).first()
+
+            if existing_appointment:
+                # Slot is already booked
+                available_slots = self._get_available_slots(doctor_id, appointment_date)
+                return {
+                    'message': f"⚠️ Sorry, the time slot {selected_time} is already booked.\n\nPlease choose from the available time slots:",
+                    'action': 'select_time',
+                    'options': available_slots
+                }
+
+            # Time is valid and available
+            self.state['data']['appointment_time'] = parsed_time.strftime('%H:%M')
+
+            # Check if we're rescheduling an existing appointment
+            if 'rescheduling_appointment_id' in self.state['data']:
+                # Rescheduling - update the existing appointment
+                try:
+                    appointment = Appointment.objects.get(id=self.state['data']['rescheduling_appointment_id'])
+                    appointment.appointment_date = appointment_date
+                    appointment.appointment_time = parsed_time
+                    appointment.save()
+
+                    # Create appointment history record
+                    from appointments.models import AppointmentHistory
+                    AppointmentHistory.objects.create(
+                        appointment=appointment,
+                        old_date=appointment.appointment_date,
+                        old_time=appointment.appointment_time,
+                        new_date=appointment_date,
+                        new_time=parsed_time,
+                        action='reschedule',
+                        reason='Patient requested reschedule'
+                    )
+
+                    self.state['stage'] = 'confirmation'
+
+                    # Format confirmation for rescheduled appointment
+                    formatted_date = appointment_date.strftime('%A, %B %d, %Y')
+                    formatted_time = parsed_time.strftime('%I:%M %p')
+
+                    return {
+                        'message': f"✅ Appointment Rescheduled Successfully!\n\n📋 Booking ID: {appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {appointment.doctor.name}\n📅 New Date: {formatted_date}\n⏰ New Time: {formatted_time}\n👤 Patient: {appointment.patient_name}\n📞 Phone: {appointment.patient_phone}\n\n✨ You'll receive a confirmation shortly.",
+                        'action': 'booking_complete',
+                        'options': [
+                            {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
+                            {'label': '✅ Done', 'value': 'done'}
+                        ]
+                    }
+
+                except Appointment.DoesNotExist:
+                    return {
+                        'message': "⚠️ Sorry, I couldn't find the appointment to reschedule. Let's start over.",
+                        'action': 'error',
+                        'options': [
+                            {'label': '🔄 Start Over', 'value': 'restart'}
+                        ]
+                    }
+                except Exception as e:
+                    print(f"Error rescheduling appointment: {str(e)}")
+                    return {
+                        'message': "⚠️ There was an error rescheduling your appointment. Please try again.",
+                        'action': 'error',
+                        'options': None
+                    }
+            else:
+                # New booking - proceed to collect patient details
+                self.state['stage'] = 'patient_details'
+
+                return {
+                    'message': f"Perfect! Your appointment is scheduled for {self.state['data']['appointment_date']} at {parsed_time.strftime('%I:%M %p')}.\n\nNow, I need some details:\n\nWhat's your full name?",
+                    'action': 'collect_name',
+                    'options': None
+                }
+
+        except Exception as e:
+            print(f"Error in time selection: {str(e)}")
+            return {
+                'message': "⚠️ There was an error processing your time selection. Please try again.",
+                'action': 'select_time',
+                'options': self._get_available_slots(doctor_id, appointment_date)
+            }
     
     def _handle_patient_details(self, message):
         """Handle patient details collection"""
@@ -667,45 +930,117 @@ class ConversationManager:
         
         return dates
     
-    def _get_available_slots(self, doctor_id, date):
-        """Get available time slots for a doctor on a specific date"""
+    def _get_available_slots(self, doctor_id, date, show_all=True):
+        """Get available time slots for a doctor on a specific date
+
+        Args:
+            doctor_id: ID of the doctor
+            date: Date object for the appointment
+            show_all: If True, shows all slots (available and booked). If False, shows only available slots.
+
+        Returns:
+            List of slot dictionaries with 'label', 'value', 'available', and 'description' fields
+        """
         # Get doctor schedule for this day
         schedules = DoctorSchedule.objects.filter(
             doctor_id=doctor_id,
             day_of_week=date.weekday(),
             is_active=True
         )
-        
+
         if not schedules.exists():
             return []
-        
+
         schedule = schedules.first()
-        
-        # Get booked appointments
-        booked_times = Appointment.objects.filter(
+
+        # Get booked appointments with patient info
+        booked_appointments = Appointment.objects.filter(
             doctor_id=doctor_id,
             appointment_date=date,
             status__in=['pending', 'confirmed']
-        ).values_list('appointment_time', flat=True)
-        
+        ).values('appointment_time', 'patient_name', 'patient_phone')
+
+        # Create a dictionary of booked times for quick lookup
+        booked_times = {apt['appointment_time']: apt for apt in booked_appointments}
+
         # Generate time slots
         slots = []
+        available_slots = []
+        booked_slots = []
+
         current_time = datetime.combine(date, schedule.start_time)
         end_time = datetime.combine(date, schedule.end_time)
-        
+
         while current_time < end_time:
             time_str = current_time.strftime('%H:%M')
-            
-            # Check if slot is not booked
-            if current_time.time() not in booked_times:
-                slots.append({
-                    'label': current_time.strftime('%I:%M %p'),
-                    'value': time_str
-                })
-            
+            time_obj = current_time.time()
+
+            # Check if slot is booked
+            is_booked = time_obj in booked_times
+
+            slot_info = {
+                'label': current_time.strftime('%I:%M %p'),
+                'value': time_str,
+                'available': not is_booked
+            }
+
+            if is_booked:
+                # Slot is booked - add description
+                slot_info['description'] = '❌ Booked'
+                booked_slots.append(slot_info)
+            else:
+                # Slot is available
+                slot_info['description'] = '✅ Available'
+                available_slots.append(slot_info)
+
+            # Add to appropriate list
+            if show_all:
+                slots.append(slot_info)
+            elif not is_booked:
+                slots.append(slot_info)
+
             current_time += timedelta(minutes=schedule.slot_duration)
-        
-        return slots
+
+        # Return available slots first, then booked slots (for better UX)
+        if show_all:
+            return available_slots + booked_slots
+        else:
+            return available_slots
+
+    def _check_existing_appointments(self):
+        """Check if patient has any upcoming appointments based on phone number from WhatsApp session"""
+        try:
+            # Get the phone number from the WhatsApp session
+            from whatsapp_integration.models import WhatsAppSession
+
+            # Find the session associated with this conversation
+            session = WhatsAppSession.objects.filter(
+                session_id=self.session_id,
+                is_active=True
+            ).first()
+
+            if not session:
+                return None
+
+            patient_phone = session.phone_number
+
+            # Look for upcoming appointments for this phone number
+            today = datetime.now().date()
+            upcoming_appointments = Appointment.objects.filter(
+                patient_phone=patient_phone,
+                appointment_date__gte=today,
+                status__in=['pending', 'confirmed']
+            ).order_by('appointment_date', 'appointment_time')
+
+            # Return the nearest upcoming appointment
+            if upcoming_appointments.exists():
+                return upcoming_appointments.first()
+
+            return None
+
+        except Exception as e:
+            print(f"Error checking existing appointments: {str(e)}")
+            return None
 
     def _validate_booking_data(self):
         """Validate all required booking data is present and valid"""
