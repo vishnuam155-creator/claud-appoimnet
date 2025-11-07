@@ -135,6 +135,11 @@ CORS_ALLOWED_ORIGINS = [
 # Claude AI Configuration
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', "AIzaSyDmalj4hGr-o8DAY0OfisVOUL2ftV9PKKE")
 
+# Twilio SMS Configuration
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
+TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', '')
+
 # Session settings for chatbot
 SESSION_COOKIE_AGE = 3600  # 1 hour
 SESSION_SAVE_EVERY_REQUEST = True

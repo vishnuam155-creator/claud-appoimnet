@@ -5,6 +5,7 @@ from appointments.models import Appointment
 from patient_booking.models import PatientRecord
 from .claude_service import ClaudeService
 from .date_parser import DateParser
+from twilio_service import get_twilio_service
 import json
 
 
@@ -1277,6 +1278,18 @@ Is there anything else I can help you with?"""
             )
 
             print(f"Appointment created successfully: {appointment.booking_id}")
+
+            # Send SMS confirmation
+            try:
+                twilio_service = get_twilio_service()
+                sms_result = twilio_service.send_appointment_confirmation(appointment)
+                if sms_result['success']:
+                    print(f"SMS confirmation sent successfully. SID: {sms_result['message_sid']}")
+                else:
+                    print(f"Failed to send SMS confirmation: {sms_result['error']}")
+            except Exception as sms_error:
+                print(f"Warning: Failed to send SMS confirmation: {str(sms_error)}")
+                # Don't fail the appointment creation if SMS fails
 
             # Also save to PatientRecord table
             try:
