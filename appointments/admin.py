@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Appointment, AppointmentHistory
+from .models import Appointment, AppointmentHistory, SMSNotification
 
 
 class AppointmentHistoryInline(admin.TabularInline):
@@ -7,6 +7,14 @@ class AppointmentHistoryInline(admin.TabularInline):
     extra = 0
     readonly_fields = ['changed_at']
     can_delete = False
+
+
+class SMSNotificationInline(admin.TabularInline):
+    model = SMSNotification
+    extra = 0
+    readonly_fields = ['notification_type', 'phone_number', 'message_sid', 'status', 'sent_at']
+    can_delete = False
+    fields = ['notification_type', 'phone_number', 'status', 'message_sid', 'sent_at']
 
 
 @admin.register(Appointment)
@@ -19,7 +27,7 @@ class AppointmentAdmin(admin.ModelAdmin):
     search_fields = ['booking_id', 'patient_name', 'patient_phone', 'patient_email']
     readonly_fields = ['booking_id', 'created_at', 'updated_at', 'session_id']
     date_hierarchy = 'appointment_date'
-    inlines = [AppointmentHistoryInline]
+    inlines = [AppointmentHistoryInline, SMSNotificationInline]
     
     fieldsets = (
         ('Booking Information', {
@@ -68,3 +76,25 @@ class AppointmentHistoryAdmin(admin.ModelAdmin):
     search_fields = ['appointment__booking_id', 'appointment__patient_name']
     readonly_fields = ['changed_at']
     date_hierarchy = 'changed_at'
+
+
+@admin.register(SMSNotification)
+class SMSNotificationAdmin(admin.ModelAdmin):
+    list_display = ['appointment', 'notification_type', 'phone_number', 'status', 'sent_at']
+    list_filter = ['notification_type', 'status', 'sent_at']
+    search_fields = ['appointment__booking_id', 'phone_number', 'message_sid']
+    readonly_fields = ['notification_type', 'phone_number', 'message_body', 'message_sid', 'sent_at', 'updated_at']
+    date_hierarchy = 'sent_at'
+
+    fieldsets = (
+        ('Notification Details', {
+            'fields': ('appointment', 'notification_type', 'phone_number', 'status')
+        }),
+        ('Message Information', {
+            'fields': ('message_body', 'message_sid', 'error_message')
+        }),
+        ('Timestamps', {
+            'fields': ('sent_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )

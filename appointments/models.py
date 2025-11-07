@@ -113,3 +113,57 @@ class AppointmentHistory(models.Model):
 
     def __str__(self):
         return f"{self.appointment.booking_id} - {self.action} at {self.changed_at}"
+
+
+class SMSNotification(models.Model):
+    """
+    Track SMS notifications sent via Twilio for appointments
+    """
+    NOTIFICATION_TYPES = [
+        ('confirmation', 'Appointment Confirmation'),
+        ('reminder', 'Appointment Reminder'),
+        ('cancellation', 'Cancellation Notice'),
+        ('reschedule', 'Reschedule Notice'),
+    ]
+
+    STATUS_CHOICES = [
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('failed', 'Failed'),
+        ('undelivered', 'Undelivered'),
+    ]
+
+    appointment = models.ForeignKey(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name='sms_notifications'
+    )
+
+    notification_type = models.CharField(
+        max_length=20,
+        choices=NOTIFICATION_TYPES,
+        default='confirmation'
+    )
+
+    phone_number = models.CharField(max_length=15)
+    message_body = models.TextField()
+
+    # Twilio response data
+    message_sid = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='sent')
+    error_message = models.TextField(blank=True, null=True)
+
+    # Timestamps
+    sent_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['appointment', 'notification_type']),
+            models.Index(fields=['message_sid']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.notification_type} to {self.phone_number} - {self.status}"
