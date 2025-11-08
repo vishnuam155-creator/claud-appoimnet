@@ -159,10 +159,10 @@ class ConversationManager:
 
             # Provide appointment context with options
             appointment_message = f"👋 Hello! I see you have an upcoming appointment:\n\n"
-            appointment_message += f"📋 Booking ID: {booking_id}\n"
-            appointment_message += f"👨‍⚕️ Doctor: Dr. {doctor_name}\n"
-            appointment_message += f"📅 Date: {formatted_date} ({time_context})\n"
-            appointment_message += f"⏰ Time: {formatted_time}\n\n"
+            appointment_message += f"📋 Booking ID: <strong>{booking_id}</strong>\n"
+            appointment_message += f"👨‍⚕️ Doctor: <strong>Dr. {doctor_name}</strong>\n"
+            appointment_message += f"📅 Date: <strong>{formatted_date}</strong> ({time_context})\n"
+            appointment_message += f"⏰ Time: <strong>{formatted_time}</strong>\n\n"
             appointment_message += "What would you like to do?"
 
             self.state['data']['existing_appointment_id'] = existing_appointment.id
@@ -257,7 +257,7 @@ class ConversationManager:
                 apt_time = existing_appointment.appointment_time.strftime('%I:%M %p')
 
                 return {
-                    'message': f"✅ Your appointment has been cancelled successfully.\n\n📋 Booking ID: {existing_appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n📅 Date: {apt_date}\n⏰ Time: {apt_time}\n\n📧 A cancellation confirmation will be sent to you shortly.\n\nWould you like to book a new appointment?",
+                    'message': f"✅ Your appointment has been cancelled successfully.\n\n📋 Booking ID: <strong>{existing_appointment.booking_id}</strong>\n👨‍⚕️ Doctor: <strong>Dr. {existing_appointment.doctor.name}</strong>\n📅 Date: <strong>{apt_date}</strong>\n⏰ Time: <strong>{apt_time}</strong>\n\n📧 A cancellation confirmation will be sent to you shortly.\n\nWould you like to book a new appointment?",
                     'action': 'appointment_cancelled',
                     'options': [
                         {'label': '📅 Book New Appointment', 'value': 'new_booking'},
@@ -291,7 +291,7 @@ class ConversationManager:
             self.state['stage'] = 'date_selection'
 
             return {
-                'message': f"Let's reschedule your appointment with Dr. {existing_appointment.doctor.name}.\n\nPlease choose a new date:",
+                'message': f"Let's reschedule your appointment with <strong>Dr. {existing_appointment.doctor.name}</strong>.\n\nPlease choose a new date:",
                 'action': 'select_date',
                 'options': self._get_date_options(existing_appointment.doctor.id, days=7)
             }
@@ -301,22 +301,22 @@ class ConversationManager:
             apt_date = existing_appointment.appointment_date.strftime('%A, %B %d, %Y')
             apt_time = existing_appointment.appointment_time.strftime('%I:%M %p')
 
-            details_message = f"📋 *Appointment Details*\n\n"
-            details_message += f"🆔 Booking ID: {existing_appointment.booking_id}\n"
-            details_message += f"👨‍⚕️ Doctor: Dr. {existing_appointment.doctor.name}\n"
-            details_message += f"🏥 Specialization: {existing_appointment.doctor.specialization.name}\n"
-            details_message += f"📅 Date: {apt_date}\n"
-            details_message += f"⏰ Time: {apt_time}\n"
-            details_message += f"👤 Patient: {existing_appointment.patient_name}\n"
-            details_message += f"📞 Phone: {existing_appointment.patient_phone}\n"
+            details_message = f"📋 <strong>Appointment Details</strong>\n\n"
+            details_message += f"🆔 Booking ID: <strong>{existing_appointment.booking_id}</strong>\n"
+            details_message += f"👨‍⚕️ Doctor: <strong>Dr. {existing_appointment.doctor.name}</strong>\n"
+            details_message += f"🏥 Specialization: <strong>{existing_appointment.doctor.specialization.name}</strong>\n"
+            details_message += f"📅 Date: <strong>{apt_date}</strong>\n"
+            details_message += f"⏰ Time: <strong>{apt_time}</strong>\n"
+            details_message += f"👤 Patient: <strong>{existing_appointment.patient_name}</strong>\n"
+            details_message += f"📞 Phone: <strong>{existing_appointment.patient_phone}</strong>\n"
 
             if existing_appointment.patient_email:
-                details_message += f"✉️ Email: {existing_appointment.patient_email}\n"
+                details_message += f"✉️ Email: <strong>{existing_appointment.patient_email}</strong>\n"
 
             if existing_appointment.symptoms:
-                details_message += f"💬 Symptoms: {existing_appointment.symptoms}\n"
+                details_message += f"💬 Symptoms: <strong>{existing_appointment.symptoms}</strong>\n"
 
-            details_message += f"📊 Status: {existing_appointment.status.title()}"
+            details_message += f"📊 Status: <strong>{existing_appointment.status.title()}</strong>"
 
             return {
                 'message': details_message,
@@ -386,10 +386,10 @@ class ConversationManager:
             # Concise response - straight to the point
             if direct_specialty_selection:
                 # User clicked a specialty button or typed specialty name
-                response_text = f"Great choice! Here are our available **{selected_specialization_name}** doctors:"
+                response_text = f"Great choice! Here are our available <strong>{selected_specialization_name}</strong> doctors:"
             else:
                 # User described symptoms
-                response_text = f"Based on your symptoms, I recommend a **{selected_specialization_name}**.\n\nAvailable doctors:"
+                response_text = f"Based on your symptoms, I recommend a <strong>{selected_specialization_name}</strong>.\n\nAvailable doctors:"
 
             return {
                 'message': response_text,
@@ -398,7 +398,7 @@ class ConversationManager:
             }
         else:
             return {
-                'message': f"I recommend seeing a {selected_specialization_name}, but unfortunately we don't have any available at the moment. Would you like to see a General Physician instead?",
+                'message': f"I recommend seeing a <strong>{selected_specialization_name}</strong>, but unfortunately we don't have any available at the moment. Would you like to see a General Physician instead?",
                 'action': 'no_doctors',
                 'options': self._get_alternative_doctors()
             }
@@ -420,9 +420,9 @@ class ConversationManager:
             self.state['data']['doctor_id'] = doctor.id
             self.state['data']['doctor_name'] = doctor.name
             self.state['stage'] = 'date_selection'
-            
+
             return {
-                'message': f"Great! You've selected Dr. {doctor.name}.\n\nWhen would you like to schedule your appointment?",
+                'message': f"Great! You've selected <strong>Dr. {doctor.name}</strong>.\n\nWhen would you like to schedule your appointment?",
                 'action': 'select_date',
                 'options': self._get_date_options(doctor.id)
             }
@@ -472,13 +472,13 @@ class ConversationManager:
         
         if slots:
             return {
-                'message': f"Great! Available time slots for {parsed_date.strftime('%A, %B %d, %Y')}:",
+                'message': f"Great! Available time slots for <strong>{parsed_date.strftime('%A, %B %d, %Y')}</strong>:",
                 'action': 'select_time',
                 'options': slots
             }
         else:
             return {
-                'message': f"Sorry, no slots available on {parsed_date.strftime('%A, %B %d, %Y')}. Please choose another date:",
+                'message': f"Sorry, no slots available on <strong>{parsed_date.strftime('%A, %B %d, %Y')}</strong>. Please choose another date:",
                 'action': 'select_date',
                 'options': self._get_date_options(self.state['data']['doctor_id'], days=7)
             }
@@ -590,7 +590,7 @@ class ConversationManager:
                     formatted_time = parsed_time.strftime('%I:%M %p')
 
                     return {
-                        'message': f"✅ Appointment Rescheduled Successfully!\n\n📋 Booking ID: {appointment.booking_id}\n👨‍⚕️ Doctor: Dr. {appointment.doctor.name}\n\n📅 Previous: {old_formatted_date} at {old_formatted_time}\n📅 New Date: {formatted_date}\n⏰ New Time: {formatted_time}\n\n👤 Patient: {appointment.patient_name}\n📞 Phone: {appointment.patient_phone}\n\n✨ You'll receive a confirmation shortly.",
+                        'message': f"✅ Appointment Rescheduled Successfully!\n\n📋 Booking ID: <strong>{appointment.booking_id}</strong>\n👨‍⚕️ Doctor: <strong>Dr. {appointment.doctor.name}</strong>\n\n📅 Previous: <strong>{old_formatted_date}</strong> at <strong>{old_formatted_time}</strong>\n📅 New Date: <strong>{formatted_date}</strong>\n⏰ New Time: <strong>{formatted_time}</strong>\n\n👤 Patient: <strong>{appointment.patient_name}</strong>\n📞 Phone: <strong>{appointment.patient_phone}</strong>\n\n✨ You'll receive a confirmation shortly.",
                         'action': 'booking_complete',
                         'options': [
                             {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
@@ -617,8 +617,9 @@ class ConversationManager:
                 # New booking - proceed to collect patient details
                 self.state['stage'] = 'patient_details'
 
+                formatted_date = dt.strptime(self.state['data']['appointment_date'], '%Y-%m-%d').strftime('%A, %B %d, %Y')
                 return {
-                    'message': f"Perfect! Your appointment is scheduled for {self.state['data']['appointment_date']} at {parsed_time.strftime('%I:%M %p')}.\n\nNow, I need some details:\n\nWhat's your full name?",
+                    'message': f"Perfect! Your appointment is scheduled for <strong>{formatted_date}</strong> at <strong>{parsed_time.strftime('%I:%M %p')}</strong>.\n\nNow, I need some details:\n\nWhat's your full name?",
                     'action': 'collect_name',
                     'options': None
                 }
@@ -646,7 +647,7 @@ class ConversationManager:
             # Extract name
             data['patient_name'] = message.strip()
             return {
-                'message': f"Thank you, {message}! What's your phone number?",
+                'message': f"Thank you, <strong>{message}</strong>! What's your phone number?",
                 'action': 'collect_phone',
                 'options': None
             }
@@ -1243,15 +1244,15 @@ class ConversationManager:
             # Build confirmation message
             message = f"""✅ Appointment Confirmed Successfully!
 
-📋 Booking ID: {appointment.booking_id}
-👨‍⚕️ Doctor: Dr. {appointment.doctor.name}
-📅 Date: {apt_date.strftime('%A, %B %d, %Y')}
-⏰ Time: {apt_time.strftime('%I:%M %p')}
-👤 Patient: {appointment.patient_name}
-📞 Phone: {appointment.patient_phone}"""
+📋 Booking ID: <strong>{appointment.booking_id}</strong>
+👨‍⚕️ Doctor: <strong>Dr. {appointment.doctor.name}</strong>
+📅 Date: <strong>{apt_date.strftime('%A, %B %d, %Y')}</strong>
+⏰ Time: <strong>{apt_time.strftime('%I:%M %p')}</strong>
+👤 Patient: <strong>{appointment.patient_name}</strong>
+📞 Phone: <strong>{appointment.patient_phone}</strong>"""
 
             if include_email and appointment.patient_email:
-                message += f"\n✉️ Email: {appointment.patient_email}"
+                message += f"\n✉️ Email: <strong>{appointment.patient_email}</strong>"
 
             message += """
 
@@ -1273,7 +1274,7 @@ Is there anything else I can help you with?"""
             print(f"Error formatting confirmation: {str(e)}")
             # Fallback to basic confirmation
             return {
-                'message': f"✅ Appointment Confirmed!\n\n📋 Booking ID: {appointment.booking_id}\n\nYour appointment has been successfully booked.",
+                'message': f"✅ Appointment Confirmed!\n\n📋 Booking ID: <strong>{appointment.booking_id}</strong>\n\nYour appointment has been successfully booked.",
                 'action': 'booking_complete',
                 'options': [
                     {'label': '📅 Book Another Appointment', 'value': 'new_booking'},
