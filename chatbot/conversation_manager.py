@@ -335,15 +335,48 @@ class ConversationManager:
 
     def _handle_symptoms(self, message):
         """Handle symptom analysis with concise responses"""
-        # Analyze symptoms using AI
-        analysis = self.claude.analyze_symptoms(message)
+        from doctors.models import Specialization
 
-        self.state['data']['symptoms'] = message
-        self.state['data']['suggested_specialization'] = analysis['specialization']
+        # Check if message is a specialization ID (when user clicks a specialty button)
+        specialization = None
+        selected_specialization_name = None
+        direct_specialty_selection = False
+
+        if message.isdigit():
+            # User selected a specialization from the options
+            try:
+                specialization = Specialization.objects.get(id=int(message))
+                selected_specialization_name = specialization.name
+                self.state['data']['symptoms'] = f"Selected specialization: {selected_specialization_name}"
+                self.state['data']['suggested_specialization'] = selected_specialization_name
+                direct_specialty_selection = True
+            except Specialization.DoesNotExist:
+                pass
+
+        # If not a specialization ID, check if user typed a specialty name directly
+        if not selected_specialization_name:
+            # Try to match specialty name in the message
+            message_lower = message.lower()
+            specializations = Specialization.objects.all()
+
+            for spec in specializations:
+                if spec.name.lower() in message_lower:
+                    selected_specialization_name = spec.name
+                    self.state['data']['symptoms'] = f"Requested specialization: {selected_specialization_name}"
+                    self.state['data']['suggested_specialization'] = selected_specialization_name
+                    direct_specialty_selection = True
+                    break
+
+        # If still not found, analyze symptoms using AI
+        if not selected_specialization_name:
+            analysis = self.claude.analyze_symptoms(message)
+            self.state['data']['symptoms'] = message
+            self.state['data']['suggested_specialization'] = analysis['specialization']
+            selected_specialization_name = analysis['specialization']
 
         # Get doctors for this specialization
         doctors = Doctor.objects.filter(
-            specialization__name=analysis['specialization'],
+            specialization__name=selected_specialization_name,
             is_active=True
         )
 
@@ -351,7 +384,12 @@ class ConversationManager:
             self.state['stage'] = 'doctor_selection'
 
             # Concise response - straight to the point
-            response_text = f"Based on your symptoms, I recommend a **{analysis['specialization']}**.\n\nAvailable doctors:"
+            if direct_specialty_selection:
+                # User clicked a specialty button or typed specialty name
+                response_text = f"Great choice! Here are our available **{selected_specialization_name}** doctors:"
+            else:
+                # User described symptoms
+                response_text = f"Based on your symptoms, I recommend a **{selected_specialization_name}**.\n\nAvailable doctors:"
 
             return {
                 'message': response_text,
@@ -360,7 +398,7 @@ class ConversationManager:
             }
         else:
             return {
-                'message': f"I recommend seeing a {analysis['specialization']}, but unfortunately we don't have any available at the moment. Would you like to see a General Physician instead?",
+                'message': f"I recommend seeing a {selected_specialization_name}, but unfortunately we don't have any available at the moment. Would you like to see a General Physician instead?",
                 'action': 'no_doctors',
                 'options': self._get_alternative_doctors()
             }
