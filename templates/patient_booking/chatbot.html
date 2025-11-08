@@ -100,6 +100,11 @@ html, body {
   word-wrap: break-word;
 }
 
+.message-content strong {
+  font-weight: 700;
+  color: inherit;
+}
+
 .bot-message {
   justify-content: flex-start;
 }
@@ -303,7 +308,11 @@ html, body {
       messageDiv.className = `message ${sender}-message`;
       const contentDiv = document.createElement("div");
       contentDiv.className = "message-content";
-      contentDiv.innerHTML = text.replace(/\n/g, "<br>");
+      // Convert markdown-style formatting to HTML
+      let formattedText = text
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // Convert **text** to bold
+        .replace(/\n/g, "<br>"); // Convert newlines to <br>
+      contentDiv.innerHTML = formattedText;
       messageDiv.appendChild(contentDiv);
       messagesDiv.appendChild(messageDiv);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
