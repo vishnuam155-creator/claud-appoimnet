@@ -659,8 +659,9 @@ class ConversationManager:
                     'action': 'collect_phone',
                     'options': None
                 }
-            # Extract phone
-            data['patient_phone'] = message.strip()
+            # Normalize phone number to E.164 format with +91 country code for India
+            normalized_phone = self._normalize_phone_number(message.strip())
+            data['patient_phone'] = normalized_phone
             return {
                 'message': "Would you like to provide your email address for appointment confirmations?",
                 'action': 'collect_email',
@@ -1224,6 +1225,37 @@ class ConversationManager:
             return "Invalid appointment date format."
 
         return None  # No errors
+
+    def _normalize_phone_number(self, phone):
+        """
+        Normalize phone number to E.164 format with +91 country code for India.
+
+        Args:
+            phone (str): Phone number to normalize
+
+        Returns:
+            str: Normalized phone number in E.164 format
+        """
+        # Remove all non-digit characters
+        digits = ''.join(filter(str.isdigit, phone))
+
+        # If it starts with country code (91 for India), add +
+        if digits.startswith('91') and len(digits) == 12:
+            return f'+{digits}'
+
+        # If it's a 10-digit number, assume India and add +91
+        elif len(digits) == 10:
+            return f'+91{digits}'
+
+        # If it already has +, return as is
+        elif phone.startswith('+'):
+            return phone
+
+        # Otherwise, return with +91 prefix if it's a valid length
+        else:
+            # Log warning for unusual formats
+            print(f"Warning: Phone number {phone} has unusual format, attempting to normalize")
+            return f'+91{digits}' if len(digits) >= 10 else phone
 
     def _format_confirmation_response(self, appointment, include_email=False):
         """Format consistent confirmation response"""
