@@ -386,13 +386,10 @@ class ConversationManager:
             # Concise response - straight to the point
             if direct_specialty_selection:
                 # User clicked a specialty button or typed specialty name
-                response_text = f"Great choice! Here are our available **{selected_specialization_name}** doctors:\n\n"
+                response_text = f"Great choice! Here are our available **{selected_specialization_name}** doctors:"
             else:
                 # User described symptoms
-                response_text = f"Based on your symptoms, I recommend a **{selected_specialization_name}**.\n\nAvailable doctors:\n\n"
-
-            # Format doctor details with bold text
-            response_text += self._format_doctor_list(doctors)
+                response_text = f"Based on your symptoms, I recommend a **{selected_specialization_name}**.\n\nAvailable doctors:"
 
             return {
                 'message': response_text,
@@ -1001,41 +998,6 @@ class ConversationManager:
             for spec in specs
         ]
     
-    def _format_doctor_list(self, doctors):
-        """Format doctor information with bold text for display"""
-        doctor_info = []
-
-        for doctor in doctors:
-            # Get doctor's schedule information
-            schedules = DoctorSchedule.objects.filter(
-                doctor=doctor,
-                is_active=True
-            ).order_by('day_of_week')
-
-            # Format schedule days
-            if schedules.exists():
-                days = []
-                for schedule in schedules:
-                    day_name = schedule.get_day_of_week_display()
-                    start = schedule.start_time.strftime('%I:%M %p')
-                    end = schedule.end_time.strftime('%I:%M %p')
-                    days.append(f"{day_name}: {start} - {end}")
-                schedule_text = ", ".join(days)
-            else:
-                schedule_text = "Schedule not available"
-
-            # Format each doctor's details
-            info = f"""**Name**: Dr. {doctor.name}
-**Specialty**: {doctor.specialization.name}
-**Experience**: {doctor.experience_years} years
-**Contact**: {doctor.phone}
-**Available**: {schedule_text}
-**Fee**: ₹{doctor.consultation_fee}
----"""
-            doctor_info.append(info)
-
-        return "\n\n".join(doctor_info)
-
     def _get_doctor_options(self, doctors):
         """Format doctors as options"""
         return [
