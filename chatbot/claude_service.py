@@ -150,7 +150,7 @@ Return ONLY the {info_type} value, nothing else. If not found, return "NOT_FOUND
 
     def detect_intent(self, user_message, current_stage, conversation_context):
         """
-        Intelligently detect user intent: proceed, change, go_back, clarify
+        Intelligently detect user intent: proceed, change, go_back, clarify, correction
         This makes the bot understand corrections and changes naturally
         """
         prompt = f"""You are analyzing a patient's message in a medical appointment booking conversation.
@@ -165,20 +165,37 @@ Analyze the patient's intent. They might be:
 2. "change_doctor" - Wanting to change the selected doctor
 3. "change_date" - Wanting to change the selected date
 4. "change_time" - Wanting to change the selected time
-5. "go_back" - Wanting to go back to a previous step
-6. "clarify" - Asking for clarification or help
-7. "cancel" - Wanting to cancel the booking
+5. "correction" - Correcting previously provided information (name, phone, email, etc.)
+6. "go_back" - Wanting to go back to a previous step
+7. "clarify" - Asking for clarification or help
+8. "cancel" - Wanting to cancel the booking
 
-Look for phrases like:
-- "actually", "wait", "no", "change", "different", "instead", "wrong"
-- "go back", "previous", "earlier step"
-- "not that one", "other option"
+Look for correction patterns like:
+- "sorry, [field] is [value]" (e.g., "sorry name is vishnu", "sorry my name is vishnu")
+- "actually, [field] is [value]" (e.g., "actually my phone is 1234567890")
+- "no, [field] is [value]" (e.g., "no my name is john")
+- "change [field] to [value]" (e.g., "change name to vishnu")
+- "update [field] to [value]" (e.g., "update phone to 1234567890")
+- "correction: [field] is [value]"
+- Just providing a corrected value after realizing a mistake
+
+For "change_X" intents, look for phrases like:
+- "different doctor", "another doctor", "change doctor"
+- "different date", "another date", "change date"
+- "different time", "another time", "change time"
+
+For "go_back", look for:
+- "go back", "previous", "earlier step", "back"
+
+For "cancel", look for:
+- "cancel", "stop", "nevermind", "forget it", "don't want"
 
 Return ONLY a JSON object:
 {{
-    "intent": "proceed|change_doctor|change_date|change_time|go_back|clarify|cancel",
+    "intent": "proceed|change_doctor|change_date|change_time|correction|go_back|clarify|cancel",
     "confidence": "high|medium|low",
     "extracted_value": "the value they want to change to, if any",
+    "field": "name|phone|email|null (only for correction intent)",
     "reasoning": "brief explanation"
 }}"""
 
@@ -202,6 +219,7 @@ Return ONLY a JSON object:
                 "intent": "proceed",
                 "confidence": "low",
                 "extracted_value": None,
+                "field": None,
                 "reasoning": "Error in detection, defaulting to proceed"
             }
 

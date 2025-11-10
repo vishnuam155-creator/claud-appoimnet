@@ -99,6 +99,8 @@ class ConversationManager:
                 response = self._handle_cancel(user_message)
             elif intent['intent'] == 'clarify':
                 response = self._handle_clarification(user_message, intent)
+            elif intent['intent'] == 'correction':
+                response = self._handle_correction(user_message, intent)
             else:
                 # Proceed normally based on current stage
                 if stage == 'symptoms':
@@ -111,6 +113,8 @@ class ConversationManager:
                     response = self._handle_time_selection(user_message)
                 elif stage == 'patient_details':
                     response = self._handle_patient_details(user_message)
+                elif stage == 'review':
+                    response = self._handle_review(user_message)
                 elif stage == 'confirmation':
                     response = self._handle_confirmation(user_message)
                 else:
@@ -800,7 +804,7 @@ class ConversationManager:
             }
     
     def _handle_patient_details(self, message):
-        """Handle patient details collection"""
+        """Handle patient details collection with intelligent correction support"""
         data = self.state['data']
 
         if 'patient_name' not in data:
@@ -811,10 +815,10 @@ class ConversationManager:
                     'action': 'collect_name',
                     'options': None
                 }
-            # Extract name
-            data['patient_name'] = message.strip()
+            # Extract name and capitalize properly
+            data['patient_name'] = message.strip().title()
             return {
-                'message': f"Thank you, {message}! What's your phone number?",
+                'message': f"Thank you, {data['patient_name']}! What's your phone number?",
                 'action': 'collect_phone',
                 'options': None
             }
@@ -841,35 +845,9 @@ class ConversationManager:
         elif 'patient_email' not in data:
             # Handle email input or skip
             if message.lower() in ['skip', 'skip_email', 'skip email']:
-                # Skip email - set to empty and proceed to confirmation
+                # Skip email - set to empty and show review
                 data['patient_email'] = ''
-                self.state['stage'] = 'confirmation'
-
-                # Validate all required data before creating appointment
-                validation_error = self._validate_booking_data()
-                if validation_error:
-                    return {
-                        'message': f"⚠️ {validation_error}\n\nPlease start over by providing your symptoms.",
-                        'action': 'error',
-                        'options': [
-                            {'label': '🔄 Start Over', 'value': 'restart'}
-                        ]
-                    }
-
-                # Create appointment
-                appointment = self._create_appointment()
-
-                if appointment:
-                    return self._format_confirmation_response(appointment)
-                else:
-                    return {
-                        'message': "⚠️ Sorry, there was an error creating your appointment. Please try again or start over.",
-                        'action': 'error',
-                        'options': [
-                            {'label': '🔄 Try Again', 'value': 'retry'},
-                            {'label': '↩️ Start Over', 'value': 'restart'}
-                        ]
-                    }
+                return self._show_booking_review()
             elif message == 'enter_email':
                 # User wants to enter email
                 return {
@@ -891,35 +869,143 @@ class ConversationManager:
                         ]
                     }
 
-                data['patient_email'] = message.strip()
+                data['patient_email'] = message.strip().lower()
+                return self._show_booking_review()
+
+    def _show_booking_review(self):
+        """Show a summary of all booking details for review before confirmation"""
+        data = self.state['data']
+
+        # Get doctor information
+        from doctors.models import Doctor
+        try:
+            doctor = Doctor.objects.get(id=data['doctor_id'])
+            doctor_name = f"Dr. {doctor.name}"
+            specialization = doctor.specialization.name
+        except Doctor.DoesNotExist:
+            doctor_name = "Unknown Doctor"
+            specialization = "Unknown"
+
+        # Format date and time
+        from datetime import datetime
+        appointment_date = datetime.strptime(data['appointment_date'], '%Y-%m-%d').date()
+        formatted_date = appointment_date.strftime('%A, %B %d, %Y')
+        formatted_time = datetime.strptime(data['appointment_time'], '%H:%M').strftime('%I:%M %p')
+
+        # Build review message
+        review_message = "📋 Please review your booking details:\n\n"
+        review_message += f"👨‍⚕️ Doctor: {doctor_name}\n"
+        review_message += f"🏥 Specialization: {specialization}\n"
+        review_message += f"📅 Date: {formatted_date}\n"
+        review_message += f"⏰ Time: {formatted_time}\n\n"
+        review_message += f"👤 Name: {data['patient_name']}\n"
+        review_message += f"📞 Phone: {data['patient_phone']}\n"
+
+        if data.get('patient_email'):
+            review_message += f"📧 Email: {data['patient_email']}\n"
+
+        review_message += "\n✏️ To make any corrections, just type what you'd like to change (e.g., 'my name is John', 'change phone to 1234567890')\n\n"
+        review_message += "Otherwise, confirm your booking:"
+
+        # Mark that we're in review mode
+        self.state['stage'] = 'review'
+
+        return {
+            'message': review_message,
+            'action': 'review_booking',
+            'options': [
+                {'label': '✅ Confirm Booking', 'value': 'confirm_booking'},
+                {'label': '✏️ Edit Details', 'value': 'edit_details'}
+            ]
+        }
+
+    def _handle_review(self, message):
+        """Handle review stage - confirm booking or handle corrections"""
+        message_lower = message.lower()
+
+        # If user confirms, create the appointment
+        if message_lower in ['confirm', 'confirm_booking', 'yes', 'ok', 'correct']:
+            # Validate all required data
+            validation_error = self._validate_booking_data()
+            if validation_error:
+                return {
+                    'message': f"⚠️ {validation_error}\n\nPlease start over.",
+                    'action': 'error',
+                    'options': [
+                        {'label': '🔄 Start Over', 'value': 'restart'}
+                    ]
+                }
+
+            # Create appointment
+            appointment = self._create_appointment()
+
+            if appointment:
                 self.state['stage'] = 'confirmation'
+                return self._format_confirmation_response(appointment)
+            else:
+                return {
+                    'message': "⚠️ Sorry, there was an error creating your appointment. Please try again.",
+                    'action': 'error',
+                    'options': [
+                        {'label': '🔄 Try Again', 'value': 'retry'},
+                        {'label': '↩️ Start Over', 'value': 'restart'}
+                    ]
+                }
 
-                # Validate all required data before creating appointment
-                validation_error = self._validate_booking_data()
-                if validation_error:
-                    return {
-                        'message': f"⚠️ {validation_error}\n\nPlease start over by providing your symptoms.",
-                        'action': 'error',
-                        'options': [
-                            {'label': '🔄 Start Over', 'value': 'restart'}
-                        ]
-                    }
+        # If user wants to edit, show the review again with edit instructions
+        elif message_lower in ['edit', 'edit_details', 'change', 'update']:
+            return {
+                'message': "Sure! Tell me what you'd like to change:\n\n• 'my name is [name]'\n• 'my phone is [number]'\n• 'my email is [email]'\n\nOr select an option:",
+                'action': 'edit_mode',
+                'options': [
+                    {'label': '✏️ Change Name', 'value': 'edit_name'},
+                    {'label': '📞 Change Phone', 'value': 'edit_phone'},
+                    {'label': '📧 Change Email', 'value': 'edit_email'},
+                    {'label': '↩️ Back to Review', 'value': 'back_to_review'}
+                ]
+            }
 
-                # Create appointment
-                appointment = self._create_appointment()
+        # Handle specific field edits
+        elif message_lower == 'edit_name':
+            return {
+                'message': f"Current name: {self.state['data'].get('patient_name', 'Not set')}\n\nWhat's your correct name?",
+                'action': 'editing_name',
+                'options': None
+            }
+        elif message_lower == 'edit_phone':
+            return {
+                'message': f"Current phone: {self.state['data'].get('patient_phone', 'Not set')}\n\nWhat's your correct phone number?",
+                'action': 'editing_phone',
+                'options': None
+            }
+        elif message_lower == 'edit_email':
+            return {
+                'message': f"Current email: {self.state['data'].get('patient_email', 'Not set')}\n\nWhat's your correct email address?",
+                'action': 'editing_email',
+                'options': [
+                    {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                    {'label': '🗑️ Remove Email', 'value': 'remove_email'}
+                ]
+            }
+        elif message_lower == 'back_to_review':
+            return self._show_booking_review()
 
-                if appointment:
-                    return self._format_confirmation_response(appointment, include_email=True)
-                else:
-                    return {
-                        'message': "⚠️ Sorry, there was an error creating your appointment. Please try again or start over.",
-                        'action': 'error',
-                        'options': [
-                            {'label': '🔄 Try Again', 'value': 'retry'},
-                            {'label': '↩️ Start Over', 'value': 'restart'}
-                        ]
-                    }
-    
+        # Otherwise, assume they're providing a correction in natural language
+        # The correction intent handler will catch this in the intent detection
+        else:
+            # Try to detect correction intent and update
+            # This should be caught by intent detection, but as fallback show edit options
+            return {
+                'message': "I'm not sure what you'd like to change. Please specify:\n\n• 'my name is [name]'\n• 'my phone is [number]'\n• 'my email is [email]'\n\nOr use the buttons below:",
+                'action': 'edit_mode',
+                'options': [
+                    {'label': '✏️ Change Name', 'value': 'edit_name'},
+                    {'label': '📞 Change Phone', 'value': 'edit_phone'},
+                    {'label': '📧 Change Email', 'value': 'edit_email'},
+                    {'label': '✅ Confirm Booking', 'value': 'confirm_booking'}
+                ]
+            }
+
     def _handle_confirmation(self, message):
         """Handle post-booking actions"""
         message_lower = message.lower()
@@ -1157,7 +1243,218 @@ class ConversationManager:
                 'action': 'clarify',
                 'options': None
             }
-    
+
+    def _handle_correction(self, message, intent):
+        """Handle corrections to previously provided information intelligently"""
+        data = self.state['data']
+        field = intent.get('field')
+        extracted_value = intent.get('extracted_value')
+
+        # Detect which field they want to correct
+        message_lower = message.lower()
+
+        # If AI detected the field, use it
+        if field and field in ['name', 'phone', 'email']:
+            field_to_update = f'patient_{field}'
+        else:
+            # Try to detect field from message patterns
+            if any(word in message_lower for word in ['name', 'called', 'naam']):
+                field_to_update = 'patient_name'
+            elif any(word in message_lower for word in ['phone', 'number', 'mobile', 'contact']):
+                field_to_update = 'patient_phone'
+            elif any(word in message_lower for word in ['email', 'mail', 'e-mail']):
+                field_to_update = 'patient_email'
+            else:
+                # Try to infer from what's already collected
+                # If they're correcting, assume it's the most recent field
+                if 'patient_email' in data:
+                    field_to_update = 'patient_email'
+                elif 'patient_phone' in data:
+                    field_to_update = 'patient_phone'
+                elif 'patient_name' in data:
+                    field_to_update = 'patient_name'
+                else:
+                    return {
+                        'message': "I'm not sure what you'd like to correct. Could you please specify? (e.g., 'my name is...', 'my phone is...', 'my email is...')",
+                        'action': 'clarify',
+                        'options': None
+                    }
+
+        # Extract the corrected value from the message if not already extracted
+        if not extracted_value:
+            # Try to extract value from common patterns
+            import re
+
+            if field_to_update == 'patient_name':
+                # Patterns: "sorry name is X", "my name is X", "actually X", etc.
+                patterns = [
+                    r'(?:sorry|actually|no|wait),?\s*(?:my\s+)?name\s+is\s+(.+)',
+                    r'(?:change|update)\s+name\s+to\s+(.+)',
+                    r'(?:name|called)\s*[:\-]?\s*(.+)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, message_lower, re.IGNORECASE)
+                    if match:
+                        extracted_value = match.group(1).strip()
+                        break
+
+                # If still not found, assume everything after common trigger words is the name
+                if not extracted_value:
+                    for trigger in ['sorry', 'actually', 'no']:
+                        if message_lower.startswith(trigger):
+                            # Extract everything after the trigger (removing "name is" variations)
+                            temp = message_lower.replace(trigger, '', 1).strip()
+                            temp = re.sub(r'^(?:my\s+)?name\s+is\s+', '', temp).strip()
+                            if temp and len(temp) >= 2:
+                                extracted_value = temp
+                                break
+
+            elif field_to_update == 'patient_phone':
+                # Extract phone number
+                patterns = [
+                    r'(?:sorry|actually|no|wait),?\s*(?:my\s+)?(?:phone|number|mobile|contact)\s+(?:is\s+|number\s+is\s+)?([0-9\s\-\+\(\)]+)',
+                    r'(?:change|update)\s+(?:phone|number)\s+to\s+([0-9\s\-\+\(\)]+)',
+                    r'([0-9\s\-\+\(\)]{10,})',  # Just a phone number
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, message, re.IGNORECASE)
+                    if match:
+                        extracted_value = match.group(1).strip()
+                        break
+
+            elif field_to_update == 'patient_email':
+                # Extract email
+                patterns = [
+                    r'(?:sorry|actually|no|wait),?\s*(?:my\s+)?(?:email|mail|e-mail)\s+(?:is\s+)?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+                    r'(?:change|update)\s+email\s+to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+                    r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # Just an email
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, message, re.IGNORECASE)
+                    if match:
+                        extracted_value = match.group(1).strip()
+                        break
+
+        # Validate and update the field
+        if field_to_update == 'patient_name':
+            if extracted_value and len(extracted_value.strip()) >= 2:
+                old_value = data.get('patient_name', 'not set')
+                data['patient_name'] = extracted_value.strip().title()
+
+                # If we're in review stage, go back to review
+                if self.state['stage'] == 'review':
+                    return self._show_booking_review()
+
+                # Determine next action based on what's been collected
+                if 'patient_phone' not in data:
+                    next_prompt = "\n\nWhat's your phone number?"
+                    action = 'collect_phone'
+                elif 'patient_email' not in data:
+                    next_prompt = "\n\nWould you like to provide your email address for appointment confirmations?"
+                    action = 'collect_email'
+                else:
+                    next_prompt = "\n\nAll your details are updated!"
+                    action = 'details_updated'
+
+                return {
+                    'message': f"Got it! I've updated your name to {data['patient_name']}.{next_prompt}",
+                    'action': action,
+                    'options': [
+                        {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                        {'label': '⏭️ Skip Email', 'value': 'skip_email'}
+                    ] if action == 'collect_email' else None
+                }
+            else:
+                return {
+                    'message': "Please provide a valid name (at least 2 characters).",
+                    'action': 'collect_name',
+                    'options': None
+                }
+
+        elif field_to_update == 'patient_phone':
+            if extracted_value:
+                # Validate phone
+                phone = extracted_value.replace('-', '').replace(' ', '').replace('(', '').replace(')', '').replace('+', '')
+                if phone.isdigit() and len(phone) >= 10:
+                    normalized_phone = self._normalize_phone_number(extracted_value)
+                    data['patient_phone'] = normalized_phone
+
+                    # If we're in review stage, go back to review
+                    if self.state['stage'] == 'review':
+                        return self._show_booking_review()
+
+                    # Determine next action
+                    if 'patient_email' not in data:
+                        next_prompt = "\n\nWould you like to provide your email address for appointment confirmations?"
+                        action = 'collect_email'
+                    else:
+                        next_prompt = "\n\nAll your details are updated!"
+                        action = 'details_updated'
+
+                    return {
+                        'message': f"Got it! I've updated your phone number to {normalized_phone}.{next_prompt}",
+                        'action': action,
+                        'options': [
+                            {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                            {'label': '⏭️ Skip Email', 'value': 'skip_email'}
+                        ] if action == 'collect_email' else None
+                    }
+                else:
+                    return {
+                        'message': "Please provide a valid phone number (at least 10 digits).",
+                        'action': 'collect_phone',
+                        'options': None
+                    }
+            else:
+                return {
+                    'message': "I couldn't find a valid phone number. Please provide your phone number.",
+                    'action': 'collect_phone',
+                    'options': None
+                }
+
+        elif field_to_update == 'patient_email':
+            if extracted_value:
+                # Basic email validation
+                import re
+                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                if re.match(email_pattern, extracted_value):
+                    data['patient_email'] = extracted_value.lower()
+
+                    # If we're in review stage, go back to review
+                    if self.state['stage'] == 'review':
+                        return self._show_booking_review()
+
+                    return {
+                        'message': f"Got it! I've updated your email to {data['patient_email']}.\n\nAll your details are updated!",
+                        'action': 'details_updated',
+                        'options': None
+                    }
+                else:
+                    return {
+                        'message': "Please provide a valid email address.",
+                        'action': 'collect_email',
+                        'options': [
+                            {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                            {'label': '⏭️ Skip Email', 'value': 'skip_email'}
+                        ]
+                    }
+            else:
+                return {
+                    'message': "I couldn't find a valid email address. Please provide your email or skip this step.",
+                    'action': 'collect_email',
+                    'options': [
+                        {'label': '✉️ Enter Email', 'value': 'enter_email'},
+                        {'label': '⏭️ Skip Email', 'value': 'skip_email'}
+                    ]
+                }
+
+        # Fallback
+        return {
+            'message': "I'm not sure what you'd like to correct. Could you please be more specific?",
+            'action': 'clarify',
+            'options': None
+        }
+
     def _get_specialization_options(self):
         """Get all available specializations"""
         from doctors.models import Specialization
