@@ -404,23 +404,21 @@ class ConversationManager:
             }
     
     def _handle_doctor_selection(self, message):
-        """Handle doctor selection"""
+        """Handle doctor selection with intelligent name matching"""
         # Check if message is a doctor ID
         doctor = None
         try:
             if message.isdigit():
                 doctor = Doctor.objects.get(id=int(message), is_active=True)
         except Doctor.DoesNotExist:
-            # Try to find doctor by name
-            doctors = Doctor.objects.filter(name__icontains=message, is_active=True)
-            if doctors.count() == 1:
-                doctor = doctors.first()
-        
+            # Use intelligent name matching
+            doctor = self._find_doctor_by_name(message)
+
         if doctor:
             self.state['data']['doctor_id'] = doctor.id
             self.state['data']['doctor_name'] = doctor.name
             self.state['stage'] = 'date_selection'
-            
+
             return {
                 'message': f"Great! You've selected Dr. {doctor.name}.\n\nWhen would you like to schedule your appointment?",
                 'action': 'select_date',
@@ -434,6 +432,176 @@ class ConversationManager:
                     Doctor.objects.filter(is_active=True)
                 )
             }
+
+    def _find_doctor_by_name(self, query):
+        """
+        Intelligently find a doctor by name with support for:
+        - Partial names (first name or last name only)
+        - Voice input variations ("dr robert", "doctor smith")
+        - Fuzzy matching for typos
+        - Case-insensitive matching
+
+        Returns the best matching doctor or None
+        """
+        if not query or not query.strip():
+            return None
+
+        # Normalize the query
+        query = query.strip().lower()
+
+        # Remove common prefixes from voice input
+        prefixes = ['dr.', 'dr ', 'doctor ', 'doc ']
+        for prefix in prefixes:
+            if query.startswith(prefix):
+                query = query[len(prefix):].strip()
+                break
+
+        if not query:
+            return None
+
+        # Get all active doctors
+        doctors = Doctor.objects.filter(is_active=True)
+
+        if not doctors.exists():
+            return None
+
+        # Score each doctor based on match quality
+        matches = []
+
+        for doctor in doctors:
+            doctor_name = doctor.name.lower()
+            name_parts = doctor_name.split()
+
+            # Extract first name and last name
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[-1] if len(name_parts) > 1 else ""
+
+            score = 0
+            match_type = None
+
+            # 1. Exact full name match (highest priority)
+            if query == doctor_name:
+                score = 100
+                match_type = "exact"
+
+            # 2. Exact first name match
+            elif query == first_name:
+                score = 90
+                match_type = "first_name"
+
+            # 3. Exact last name match
+            elif query == last_name:
+                score = 90
+                match_type = "last_name"
+
+            # 4. Query contains full name or full name contains query
+            elif query in doctor_name or doctor_name in query:
+                score = 80
+                match_type = "substring"
+
+            # 5. First name starts with query
+            elif first_name.startswith(query):
+                score = 70
+                match_type = "first_name_prefix"
+
+            # 6. Last name starts with query
+            elif last_name.startswith(query):
+                score = 70
+                match_type = "last_name_prefix"
+
+            # 7. Any name part contains query
+            elif any(query in part for part in name_parts):
+                score = 60
+                match_type = "partial"
+
+            # 8. Fuzzy matching for typos (using simple similarity)
+            else:
+                # Calculate similarity score for first name
+                first_similarity = self._calculate_similarity(query, first_name)
+                last_similarity = self._calculate_similarity(query, last_name)
+                full_similarity = self._calculate_similarity(query, doctor_name)
+
+                max_similarity = max(first_similarity, last_similarity, full_similarity)
+
+                # Only consider if similarity is above threshold (80%)
+                if max_similarity >= 0.8:
+                    score = int(50 * max_similarity)
+                    match_type = "fuzzy"
+
+            if score > 0:
+                matches.append({
+                    'doctor': doctor,
+                    'score': score,
+                    'match_type': match_type
+                })
+
+        if not matches:
+            return None
+
+        # Sort by score (descending)
+        matches.sort(key=lambda x: x['score'], reverse=True)
+
+        # Get the best match
+        best_match = matches[0]
+
+        # If there are multiple matches with the same top score, check if they're different doctors
+        # This handles ambiguous cases like "smith" matching both "John Smith" and "Sarah Smith"
+        if len(matches) > 1 and matches[1]['score'] == best_match['score']:
+            # Ambiguous match - don't auto-select
+            return None
+
+        # Return the best matching doctor
+        # We accept the match if the score is at least 60 (partial match or better)
+        if best_match['score'] >= 60:
+            print(f"[Doctor Match] Query: '{query}' -> Matched: '{best_match['doctor'].name}' "
+                  f"(score: {best_match['score']}, type: {best_match['match_type']})")
+            return best_match['doctor']
+
+        return None
+
+    def _calculate_similarity(self, str1, str2):
+        """
+        Calculate similarity ratio between two strings using Levenshtein distance.
+        Returns a value between 0 (no match) and 1 (exact match).
+        """
+        if not str1 or not str2:
+            return 0.0
+
+        # Simple implementation of Levenshtein distance
+        len1, len2 = len(str1), len(str2)
+
+        # Create distance matrix
+        matrix = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+
+        # Initialize first row and column
+        for i in range(len1 + 1):
+            matrix[i][0] = i
+        for j in range(len2 + 1):
+            matrix[0][j] = j
+
+        # Calculate distances
+        for i in range(1, len1 + 1):
+            for j in range(1, len2 + 1):
+                if str1[i-1] == str2[j-1]:
+                    cost = 0
+                else:
+                    cost = 1
+
+                matrix[i][j] = min(
+                    matrix[i-1][j] + 1,      # deletion
+                    matrix[i][j-1] + 1,      # insertion
+                    matrix[i-1][j-1] + cost  # substitution
+                )
+
+        # Calculate similarity ratio
+        max_len = max(len1, len2)
+        if max_len == 0:
+            return 1.0
+
+        distance = matrix[len1][len2]
+        similarity = 1.0 - (distance / max_len)
+
+        return similarity
     
     def _handle_date_selection(self, message):
         """Handle date selection with natural language support"""
