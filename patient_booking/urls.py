@@ -7,4 +7,5 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('chatbot/', views.chatbot_page, name='chatbot'),
     path('api/chatbot/', views.ChatbotAPIView.as_view(), name='chatbot_api'),
+    path('api/voice/', views.VoiceAPIView.as_view(), name='voice_api'),
 ]
