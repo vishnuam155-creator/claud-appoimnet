@@ -31,6 +31,20 @@ class Appointment(models.Model):
         choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')],
         blank=True
     )
+
+    # Enhanced patient medical information
+    medical_history = models.TextField(
+        blank=True,
+        help_text="Patient's relevant medical history, chronic conditions, previous surgeries, etc."
+    )
+    allergies = models.TextField(
+        blank=True,
+        help_text="Known allergies (medications, food, environmental, etc.)"
+    )
+    current_medications = models.TextField(
+        blank=True,
+        help_text="Current medications the patient is taking"
+    )
     
     # Appointment details
     appointment_date = models.DateField()

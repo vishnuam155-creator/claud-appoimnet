@@ -24,6 +24,34 @@ html, body {
   flex-direction: column;
 }
 
+/* ====== BACKGROUND BLUR EFFECT (Gemini-style) ====== */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  z-index: -1;
+  transition: all 0.5s ease;
+  pointer-events: none;
+}
+
+body.voice-active::before {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 0;
+}
+
+body.voice-active .chat-wrapper {
+  z-index: 1;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  transform: scale(1.02);
+  transition: all 0.5s ease;
+}
+
 /* ====== CHAT WRAPPER ====== */
 .chat-wrapper {
   display: flex;
@@ -324,6 +352,45 @@ html, body {
   50% { opacity: 0.5; transform: scale(0.9); }
 }
 
+/* ====== VOICE WAVEFORM ANIMATION (Gemini-style) ====== */
+.voice-waveform {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px;
+  margin: 0 30px;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.voice-waveform.active {
+  display: flex;
+}
+
+.waveform-bar {
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(180deg, #2563eb 0%, #1e40af 100%);
+  border-radius: 2px;
+  animation: wave 1.2s ease-in-out infinite;
+}
+
+.waveform-bar:nth-child(1) { animation-delay: 0s; }
+.waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+.waveform-bar:nth-child(5) { animation-delay: 0.4s; }
+.waveform-bar:nth-child(6) { animation-delay: 0.3s; }
+.waveform-bar:nth-child(7) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(8) { animation-delay: 0.1s; }
+
+@keyframes wave {
+  0%, 100% { height: 20px; opacity: 0.5; }
+  50% { height: 40px; opacity: 1; }
+}
+
 /* ====== SCROLLBAR ====== */
 .messages::-webkit-scrollbar {
   width: 6px;
@@ -374,6 +441,17 @@ html, body {
     </div>
 
     <div class="options-container" id="options-container"></div>
+
+    <div class="voice-waveform" id="voice-waveform">
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+      <div class="waveform-bar"></div>
+    </div>
 
     <div class="voice-status" id="voice-status">
       <span class="status-dot"></span>
@@ -428,7 +506,10 @@ html, body {
         document.getElementById('mic-btn').classList.add('recording');
         document.getElementById('voice-status').classList.add('active');
 
+        // Activate blur and waveform for immersive experience
         if (conversationMode) {
+          document.body.classList.add('voice-active');
+          document.getElementById('voice-waveform').classList.add('active');
           document.getElementById('voice-status-text').textContent = '🎙️ I\'m listening... speak naturally';
         } else {
           document.getElementById('voice-status-text').textContent = 'Listening...';
@@ -781,6 +862,9 @@ html, body {
         audioContext = null;
       }
 
+      // Deactivate blur and waveform
+      document.body.classList.remove('voice-active');
+      document.getElementById('voice-waveform').classList.remove('active');
       document.getElementById('mic-btn').classList.remove('recording');
       document.getElementById('mic-btn').title = 'Voice Input';
       document.getElementById('voice-status').classList.remove('active');

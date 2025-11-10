@@ -870,6 +870,129 @@ class ConversationManager:
                     }
 
                 data['patient_email'] = message.strip().lower()
+                # After email, ask for age
+                return {
+                    'message': "How old are you? (This helps the doctor prepare for your visit)",
+                    'action': 'collect_age',
+                    'options': [
+                        {'label': '⏭️ Skip (Optional)', 'value': 'skip_age'}
+                    ]
+                }
+        elif 'patient_age' not in data:
+            # Handle age input or skip
+            if message.lower() in ['skip', 'skip_age', 'skip age']:
+                data['patient_age'] = None
+                # Move to gender
+                return {
+                    'message': "What's your gender? (Helps us provide better care)",
+                    'action': 'collect_gender',
+                    'options': [
+                        {'label': '👨 Male', 'value': 'male'},
+                        {'label': '👩 Female', 'value': 'female'},
+                        {'label': '⚧️ Other', 'value': 'other'},
+                        {'label': '⏭️ Skip (Optional)', 'value': 'skip_gender'}
+                    ]
+                }
+            else:
+                # Validate age
+                try:
+                    age = int(message.strip())
+                    if age < 0 or age > 120:
+                        return {
+                            'message': "Please provide a valid age (0-120).",
+                            'action': 'collect_age',
+                            'options': [
+                                {'label': '⏭️ Skip (Optional)', 'value': 'skip_age'}
+                            ]
+                        }
+                    data['patient_age'] = age
+                    # Move to gender
+                    return {
+                        'message': "What's your gender? (Helps us provide better care)",
+                        'action': 'collect_gender',
+                        'options': [
+                            {'label': '👨 Male', 'value': 'male'},
+                            {'label': '👩 Female', 'value': 'female'},
+                            {'label': '⚧️ Other', 'value': 'other'},
+                            {'label': '⏭️ Skip (Optional)', 'value': 'skip_gender'}
+                        ]
+                    }
+                except ValueError:
+                    return {
+                        'message': "Please enter your age as a number, or skip this step.",
+                        'action': 'collect_age',
+                        'options': [
+                            {'label': '⏭️ Skip (Optional)', 'value': 'skip_age'}
+                        ]
+                    }
+        elif 'patient_gender' not in data:
+            # Handle gender input or skip
+            if message.lower() in ['skip', 'skip_gender', 'skip gender']:
+                data['patient_gender'] = ''
+                # Move to medical history
+                return {
+                    'message': "Do you have any medical conditions or history the doctor should know about?\n\n(e.g., diabetes, high blood pressure, previous surgeries, etc.)\n\nOr you can skip if none.",
+                    'action': 'collect_medical_history',
+                    'options': [
+                        {'label': '⏭️ None / Skip', 'value': 'skip_medical_history'}
+                    ]
+                }
+            elif message.lower() in ['male', 'female', 'other', 'm', 'f']:
+                # Normalize gender value
+                gender_map = {
+                    'male': 'male', 'm': 'male',
+                    'female': 'female', 'f': 'female',
+                    'other': 'other'
+                }
+                data['patient_gender'] = gender_map.get(message.lower(), message.lower())
+                # Move to medical history
+                return {
+                    'message': "Do you have any medical conditions or history the doctor should know about?\n\n(e.g., diabetes, high blood pressure, previous surgeries, etc.)\n\nOr you can skip if none.",
+                    'action': 'collect_medical_history',
+                    'options': [
+                        {'label': '⏭️ None / Skip', 'value': 'skip_medical_history'}
+                    ]
+                }
+            else:
+                return {
+                    'message': "Please select a valid option or type: male, female, or other.",
+                    'action': 'collect_gender',
+                    'options': [
+                        {'label': '👨 Male', 'value': 'male'},
+                        {'label': '👩 Female', 'value': 'female'},
+                        {'label': '⚧️ Other', 'value': 'other'},
+                        {'label': '⏭️ Skip (Optional)', 'value': 'skip_gender'}
+                    ]
+                }
+        elif 'medical_history' not in data:
+            # Handle medical history input or skip
+            if message.lower() in ['skip', 'skip_medical_history', 'none', 'no', 'nothing']:
+                data['medical_history'] = ''
+                # Move to allergies
+                return {
+                    'message': "⚠️ Important: Do you have any allergies?\n\n(medications, food, environmental, etc.)\n\nThis is crucial for your safety.",
+                    'action': 'collect_allergies',
+                    'options': [
+                        {'label': '✅ No allergies', 'value': 'no_allergies'}
+                    ]
+                }
+            else:
+                data['medical_history'] = message.strip()
+                # Move to allergies
+                return {
+                    'message': "⚠️ Important: Do you have any allergies?\n\n(medications, food, environmental, etc.)\n\nThis is crucial for your safety.",
+                    'action': 'collect_allergies',
+                    'options': [
+                        {'label': '✅ No allergies', 'value': 'no_allergies'}
+                    ]
+                }
+        elif 'allergies' not in data:
+            # Handle allergies input or skip
+            if message.lower() in ['skip', 'no', 'none', 'no_allergies', 'no allergies']:
+                data['allergies'] = ''
+                return self._show_booking_review()
+            else:
+                data['allergies'] = message.strip()
                 return self._show_booking_review()
 
     def _show_booking_review(self):
@@ -904,6 +1027,20 @@ class ConversationManager:
         if data.get('patient_email'):
             review_message += f"📧 Email: {data['patient_email']}\n"
 
+        if data.get('patient_age'):
+            review_message += f"🎂 Age: {data['patient_age']}\n"
+
+        if data.get('patient_gender'):
+            review_message += f"⚧️ Gender: {data['patient_gender'].title()}\n"
+
+        review_message += "\n"
+
+        if data.get('medical_history'):
+            review_message += f"🏥 Medical History: {data['medical_history']}\n"
+
+        if data.get('allergies'):
+            review_message += f"⚠️ Allergies: {data['allergies']}\n"
+
         review_message += "\n✏️ To make any corrections, just type what you'd like to change (e.g., 'my name is John', 'change phone to 1234567890')\n\n"
         review_message += "Otherwise, confirm your booking:"
 
@@ -920,11 +1057,27 @@ class ConversationManager:
         }
 
     def _handle_review(self, message):
-        """Handle review stage - confirm booking or handle corrections"""
-        message_lower = message.lower()
+        """
+        Handle review stage - confirm booking or handle corrections
+        Enhanced with natural language understanding for voice confirmations
+        """
+        message_lower = message.lower().strip()
+
+        # Enhanced confirmation patterns for voice input
+        confirmation_phrases = [
+            'confirm', 'confirm_booking', 'yes', 'yeah', 'yep', 'yup',
+            'ok', 'okay', 'correct', 'right', 'that\'s right', 'that\'s correct',
+            'looks good', 'all good', 'perfect', 'sounds good',
+            'go ahead', 'proceed', 'book it', 'confirmed',
+            'everything is correct', 'everything looks good',
+            'yes please', 'yeah please', 'sure', 'absolutely'
+        ]
+
+        # Check if message contains any confirmation phrase
+        is_confirmation = any(phrase in message_lower for phrase in confirmation_phrases)
 
         # If user confirms, create the appointment
-        if message_lower in ['confirm', 'confirm_booking', 'yes', 'ok', 'correct']:
+        if is_confirmation:
             # Validate all required data
             validation_error = self._validate_booking_data()
             if validation_error:
@@ -1799,12 +1952,17 @@ Is there anything else I can help you with?"""
             # Get doctor info
             doctor = Doctor.objects.get(id=data['doctor_id'])
 
-            # Create appointment
+            # Create appointment with enhanced patient information
             appointment = Appointment.objects.create(
                 doctor_id=data['doctor_id'],
                 patient_name=data['patient_name'],
                 patient_phone=data['patient_phone'],
                 patient_email=data.get('patient_email', ''),
+                patient_age=data.get('patient_age'),
+                patient_gender=data.get('patient_gender', ''),
+                medical_history=data.get('medical_history', ''),
+                allergies=data.get('allergies', ''),
+                current_medications=data.get('current_medications', ''),
                 appointment_date=data['appointment_date'],
                 appointment_time=data['appointment_time'],
                 symptoms=data.get('symptoms', 'Not specified'),
