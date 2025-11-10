@@ -143,3 +143,19 @@ TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', '')
 # Session settings for chatbot
 SESSION_COOKIE_AGE = 3600  # 1 hour
 SESSION_SAVE_EVERY_REQUEST = True
+
+# Voice/Speech Configuration
+# Set to True to use Google Cloud Speech-to-Text and Text-to-Speech APIs
+# If False, the system will use Web Speech API (browser-based, free)
+USE_GOOGLE_CLOUD_SPEECH = os.getenv('USE_GOOGLE_CLOUD_SPEECH', 'False') == 'True'
+
+# Google Cloud credentials (optional - only needed if USE_GOOGLE_CLOUD_SPEECH is True)
+# Set GOOGLE_APPLICATION_CREDENTIALS environment variable to point to your service account JSON file
+# Example: export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '')
+
+# Voice Settings
+VOICE_LANGUAGE_DEFAULT = 'en-IN'  # Default language for voice interactions
+VOICE_SUPPORTED_LANGUAGES = ['en-IN', 'hi-IN', 'en-US']  # Supported languages
+VOICE_SPEAKING_RATE = 0.95  # Speaking rate for TTS (0.5 to 2.0)
+VOICE_ENABLE_AUTO_SPEAK = False  # Auto-speak bot responses (can be toggled by user)

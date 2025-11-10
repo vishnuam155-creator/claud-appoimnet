@@ -191,6 +191,7 @@ html, body {
   padding: 18px 30px;
   background: #ffffff;
   border-top: 1px solid #e5e7eb;
+  gap: 10px;
 }
 
 #user-input {
@@ -214,8 +215,51 @@ html, body {
   background: #ffffff;
 }
 
+.voice-btn {
+  padding: 12px;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#mic-btn {
+  background: #10b981;
+  color: white;
+}
+
+#mic-btn:hover {
+  background: #059669;
+  transform: scale(1.05);
+}
+
+#mic-btn.recording {
+  background: #ef4444;
+  animation: pulse 1.5s infinite;
+}
+
+#speaker-btn {
+  background: #6366f1;
+  color: white;
+}
+
+#speaker-btn:hover {
+  background: #4f46e5;
+  transform: scale(1.05);
+}
+
+#speaker-btn.disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
 #send-btn {
-  margin-left: 10px;
   padding: 12px 22px;
   border-radius: 25px;
   background: #2563eb;
@@ -230,6 +274,44 @@ html, body {
 #send-btn:hover {
   background: #1e40af;
   transform: scale(1.05);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Voice status indicator */
+.voice-status {
+  display: none;
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border-radius: 15px;
+  font-size: 13px;
+  color: #6b7280;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-status.active {
+  display: flex;
+}
+
+.voice-status .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* ====== SCROLLBAR ====== */
@@ -283,8 +365,15 @@ html, body {
 
     <div class="options-container" id="options-container"></div>
 
+    <div class="voice-status" id="voice-status">
+      <span class="status-dot"></span>
+      <span id="voice-status-text">Listening...</span>
+    </div>
+
     <div class="input-area">
-      <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off" />
+      <button class="voice-btn" id="mic-btn" title="Voice Input">🎤</button>
+      <input type="text" id="user-input" placeholder="Type or speak your message..." autocomplete="off" />
+      <button class="voice-btn" id="speaker-btn" title="Voice Output">🔊</button>
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -292,9 +381,157 @@ html, body {
   <!-- ===== ⚙️ SCRIPT ===== -->
   <script>
     let sessionId = generateSessionId();
+    let voiceEnabled = false;
+    let isRecording = false;
+    let recognition = null;
+    let synthesis = window.speechSynthesis;
+
+    // Initialize Web Speech API
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN'; // English (India)
+
+      recognition.onstart = function() {
+        isRecording = true;
+        document.getElementById('mic-btn').classList.add('recording');
+        document.getElementById('voice-status').classList.add('active');
+        document.getElementById('voice-status-text').textContent = 'Listening...';
+      };
+
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        const confidence = event.results[0][0].confidence;
+
+        document.getElementById('user-input').value = transcript;
+
+        // Auto-send if confidence is high
+        if (confidence > 0.7) {
+          setTimeout(() => sendMessage(), 500);
+        }
+      };
+
+      recognition.onerror = function(event) {
+        console.error('Speech recognition error:', event.error);
+        stopRecording();
+
+        if (event.error === 'no-speech') {
+          showVoiceStatus('No speech detected. Please try again.', 'error');
+        } else if (event.error === 'not-allowed') {
+          showVoiceStatus('Microphone access denied. Please enable it.', 'error');
+        } else {
+          showVoiceStatus('Voice recognition error. Please try typing.', 'error');
+        }
+      };
+
+      recognition.onend = function() {
+        stopRecording();
+      };
+    }
 
     function generateSessionId() {
       return "session_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    }
+
+    function toggleVoiceInput() {
+      if (!recognition) {
+        alert('Voice recognition is not supported in your browser. Please use Chrome or Edge.');
+        return;
+      }
+
+      if (isRecording) {
+        recognition.stop();
+      } else {
+        try {
+          recognition.start();
+        } catch (error) {
+          console.error('Error starting recognition:', error);
+        }
+      }
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      document.getElementById('mic-btn').classList.remove('recording');
+      document.getElementById('voice-status').classList.remove('active');
+    }
+
+    function toggleVoiceOutput() {
+      voiceEnabled = !voiceEnabled;
+      const speakerBtn = document.getElementById('speaker-btn');
+
+      if (voiceEnabled) {
+        speakerBtn.textContent = '🔊';
+        speakerBtn.classList.remove('disabled');
+        showVoiceStatus('Voice output enabled', 'success');
+      } else {
+        speakerBtn.textContent = '🔇';
+        speakerBtn.classList.add('disabled');
+        synthesis.cancel(); // Stop any ongoing speech
+        showVoiceStatus('Voice output disabled', 'info');
+      }
+
+      // Hide status after 2 seconds
+      setTimeout(() => {
+        if (!isRecording) {
+          document.getElementById('voice-status').classList.remove('active');
+        }
+      }, 2000);
+    }
+
+    function showVoiceStatus(message, type = 'info') {
+      const statusEl = document.getElementById('voice-status');
+      const statusText = document.getElementById('voice-status-text');
+
+      statusText.textContent = message;
+      statusEl.classList.add('active');
+
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        if (!isRecording) {
+          statusEl.classList.remove('active');
+        }
+      }, 3000);
+    }
+
+    function speak(text) {
+      if (!voiceEnabled || !synthesis) return;
+
+      // Cancel any ongoing speech
+      synthesis.cancel();
+
+      // Remove HTML tags
+      const cleanText = text.replace(/<[^>]+>/g, '').replace(/\n/g, '. ');
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = 'en-IN';
+      utterance.rate = 0.9; // Slightly slower for clarity
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      // Get Indian English voice if available
+      const voices = synthesis.getVoices();
+      const indianVoice = voices.find(voice =>
+        voice.lang === 'en-IN' || voice.lang.startsWith('en-IN')
+      );
+
+      if (indianVoice) {
+        utterance.voice = indianVoice;
+      }
+
+      utterance.onstart = function() {
+        showVoiceStatus('Speaking...', 'info');
+      };
+
+      utterance.onend = function() {
+        if (!isRecording) {
+          document.getElementById('voice-status').classList.remove('active');
+        }
+      };
+
+      synthesis.speak(utterance);
     }
 
     function addMessage(text, sender) {
@@ -360,6 +597,12 @@ html, body {
         if (data.success) {
           sessionId = data.session_id;
           addMessage(data.message, "bot");
+
+          // Speak the response if voice is enabled
+          if (voiceEnabled) {
+            speak(data.message);
+          }
+
           if (data.options) displayOptions(data.options);
           else document.getElementById("options-container").style.display = "none";
         } else addMessage("⚠️ Sorry, something went wrong. Please try again.", "bot");
@@ -370,12 +613,35 @@ html, body {
       }
     }
 
+    // Event listeners
     document.getElementById("send-btn").addEventListener("click", () => sendMessage());
     document.getElementById("user-input").addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();
     });
 
-    window.onload = () => document.getElementById("user-input").focus();
+    document.getElementById("mic-btn").addEventListener("click", toggleVoiceInput);
+    document.getElementById("speaker-btn").addEventListener("click", toggleVoiceOutput);
+
+    // Load voices when they become available
+    if (synthesis) {
+      synthesis.onvoiceschanged = function() {
+        const voices = synthesis.getVoices();
+        console.log('Available voices:', voices.length);
+      };
+    }
+
+    window.onload = () => {
+      document.getElementById("user-input").focus();
+
+      // Show voice feature hint
+      setTimeout(() => {
+        const voiceHint = "💡 Tip: Click 🎤 for voice input and 🔊 to hear responses!";
+        const hintDiv = document.createElement("div");
+        hintDiv.className = "message bot-message";
+        hintDiv.innerHTML = `<div class="message-content" style="background: #dbeafe; color: #1e40af;">${voiceHint}</div>`;
+        document.getElementById("messages").appendChild(hintDiv);
+      }, 1000);
+    };
   </script>
 </body>
 </html>
