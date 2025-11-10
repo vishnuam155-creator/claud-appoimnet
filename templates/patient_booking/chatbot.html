@@ -240,8 +240,9 @@ html, body {
 }
 
 #mic-btn.recording {
-  background: #ef4444;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   animation: pulse 1.5s infinite;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
 }
 
 #speaker-btn {
@@ -288,30 +289,39 @@ html, body {
 /* Voice status indicator */
 .voice-status {
   display: none;
-  padding: 8px 16px;
-  background: #f3f4f6;
-  border-radius: 15px;
-  font-size: 13px;
-  color: #6b7280;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  border-radius: 20px;
+  font-size: 14px;
+  color: #374151;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-weight: 500;
+  margin: 0 30px 10px 30px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
 }
 
 .voice-status.active {
   display: flex;
+  border-color: #10b981;
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #065f46;
 }
 
 .voice-status .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #10b981;
   animation: blink 1s infinite;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.9); }
 }
 
 /* ====== SCROLLBAR ====== */
@@ -372,7 +382,7 @@ html, body {
 
     <div class="input-area">
       <button class="voice-btn" id="mic-btn" title="Voice Input">🎤</button>
-      <input type="text" id="user-input" placeholder="Type or speak your message..." autocomplete="off" />
+      <input type="text" id="user-input" placeholder="Type or click 🎤 for voice conversation..." autocomplete="off" />
       <button class="voice-btn" id="speaker-btn" title="Voice Output">🔊</button>
       <button id="send-btn">Send</button>
     </div>
@@ -383,51 +393,116 @@ html, body {
     let sessionId = generateSessionId();
     let voiceEnabled = false;
     let isRecording = false;
+    let conversationMode = false;  // NEW: Conversational AI mode
     let recognition = null;
     let synthesis = window.speechSynthesis;
+    let silenceTimer = null;  // NEW: Timer to detect end of speech
+    let interimTranscript = '';  // NEW: Track interim results
+    let finalTranscript = '';  // NEW: Track final transcript
 
     // Initialize Web Speech API
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;  // CHANGED: Enable continuous listening
+      recognition.interimResults = true;  // CHANGED: Enable interim results for better VAD
       recognition.lang = 'en-IN'; // English (India)
 
       recognition.onstart = function() {
         isRecording = true;
         document.getElementById('mic-btn').classList.add('recording');
         document.getElementById('voice-status').classList.add('active');
-        document.getElementById('voice-status-text').textContent = 'Listening...';
+
+        if (conversationMode) {
+          document.getElementById('voice-status-text').textContent = '🎙️ I\'m listening... speak naturally';
+        } else {
+          document.getElementById('voice-status-text').textContent = 'Listening...';
+        }
       };
 
       recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        const confidence = event.results[0][0].confidence;
+        // NEW: Handle both interim and final results
+        interimTranscript = '';
+        finalTranscript = '';
 
-        document.getElementById('user-input').value = transcript;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
 
-        // Auto-send if confidence is high
-        if (confidence > 0.7) {
-          setTimeout(() => sendMessage(), 500);
+        // Update input field with current speech
+        const currentText = (finalTranscript + interimTranscript).trim();
+        if (currentText) {
+          document.getElementById('user-input').value = currentText;
+
+          if (conversationMode) {
+            document.getElementById('voice-status-text').textContent = '🎤 ' + currentText.substring(0, 30) + '...';
+          }
+        }
+
+        // NEW: Voice Activity Detection - detect silence after speech
+        if (conversationMode && finalTranscript) {
+          // Clear existing timer
+          if (silenceTimer) {
+            clearTimeout(silenceTimer);
+          }
+
+          // Set new timer - if no new speech in 1.5 seconds, auto-send
+          silenceTimer = setTimeout(() => {
+            if (finalTranscript.trim()) {
+              document.getElementById('voice-status-text').textContent = '✨ Processing...';
+              autoSendMessage();
+            }
+          }, 1500);  // 1.5 second pause indicates end of speech
+        } else if (!conversationMode) {
+          // OLD BEHAVIOR: Auto-send if confidence is high (non-conversation mode)
+          const confidence = event.results[0][0].confidence;
+          if (confidence > 0.7) {
+            setTimeout(() => sendMessage(), 500);
+          }
         }
       };
 
       recognition.onerror = function(event) {
         console.error('Speech recognition error:', event.error);
-        stopRecording();
+
+        // Don't stop conversation mode for no-speech errors
+        if (event.error === 'no-speech' && conversationMode) {
+          // Just continue listening
+          return;
+        }
+
+        if (!conversationMode) {
+          stopRecording();
+        }
 
         if (event.error === 'no-speech') {
-          showVoiceStatus('No speech detected. Please try again.', 'error');
+          if (!conversationMode) {
+            showVoiceStatus('No speech detected. Please try again.', 'error');
+          }
         } else if (event.error === 'not-allowed') {
           showVoiceStatus('Microphone access denied. Please enable it.', 'error');
-        } else {
+          stopConversationMode();
+        } else if (event.error !== 'aborted') {
           showVoiceStatus('Voice recognition error. Please try typing.', 'error');
         }
       };
 
       recognition.onend = function() {
-        stopRecording();
+        // NEW: Auto-restart if in conversation mode
+        if (conversationMode && isRecording) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.log('Recognition restart skipped:', e);
+          }
+        } else {
+          stopRecording();
+        }
       };
     }
 
@@ -441,21 +516,101 @@ html, body {
         return;
       }
 
-      if (isRecording) {
-        recognition.stop();
+      if (isRecording || conversationMode) {
+        // Stop conversation mode
+        stopConversationMode();
       } else {
-        try {
-          recognition.start();
-        } catch (error) {
-          console.error('Error starting recognition:', error);
-        }
+        // Start conversation mode
+        startConversationMode();
       }
     }
 
-    function stopRecording() {
+    function startConversationMode() {
+      conversationMode = true;
+      finalTranscript = '';
+      interimTranscript = '';
+
+      // Auto-enable voice output for conversational experience
+      if (!voiceEnabled) {
+        voiceEnabled = true;
+        const speakerBtn = document.getElementById('speaker-btn');
+        speakerBtn.textContent = '🔊';
+        speakerBtn.classList.remove('disabled');
+      }
+
+      try {
+        recognition.start();
+        document.getElementById('mic-btn').classList.add('recording');
+        document.getElementById('mic-btn').title = 'Stop Conversation';
+
+        // Show conversation mode hint
+        showVoiceStatus('🎙️ Conversation mode active - speak naturally!', 'success');
+        setTimeout(() => {
+          if (conversationMode) {
+            document.getElementById('voice-status-text').textContent = '🎙️ I\'m listening...';
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Error starting conversation mode:', error);
+        conversationMode = false;
+      }
+    }
+
+    function stopConversationMode() {
+      conversationMode = false;
       isRecording = false;
+
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+
+      try {
+        recognition.stop();
+      } catch (error) {
+        console.log('Recognition already stopped');
+      }
+
       document.getElementById('mic-btn').classList.remove('recording');
+      document.getElementById('mic-btn').title = 'Voice Input';
       document.getElementById('voice-status').classList.remove('active');
+
+      finalTranscript = '';
+      interimTranscript = '';
+    }
+
+    function stopRecording() {
+      if (!conversationMode) {
+        isRecording = false;
+        document.getElementById('mic-btn').classList.remove('recording');
+        document.getElementById('voice-status').classList.remove('active');
+      }
+    }
+
+    function autoSendMessage() {
+      // NEW: Automatically send message in conversation mode
+      const input = document.getElementById('user-input');
+      const message = input.value.trim();
+
+      if (!message) return;
+
+      // Clear the timer
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+
+      // Reset transcripts
+      finalTranscript = '';
+      interimTranscript = '';
+
+      // Pause listening while processing
+      document.getElementById('voice-status-text').textContent = '🤖 Bot is thinking...';
+
+      // Send the message
+      sendMessage().then(() => {
+        // Resume listening after bot responds (happens in speak function)
+      });
     }
 
     function toggleVoiceOutput() {
@@ -497,7 +652,13 @@ html, body {
     }
 
     function speak(text) {
-      if (!voiceEnabled || !synthesis) return;
+      if (!voiceEnabled || !synthesis) {
+        // If conversation mode but voice disabled, still resume listening
+        if (conversationMode) {
+          resumeListeningAfterResponse();
+        }
+        return;
+      }
 
       // Cancel any ongoing speech
       synthesis.cancel();
@@ -522,16 +683,34 @@ html, body {
       }
 
       utterance.onstart = function() {
-        showVoiceStatus('Speaking...', 'info');
+        showVoiceStatus('🔊 Speaking...', 'info');
       };
 
       utterance.onend = function() {
-        if (!isRecording) {
+        // NEW: Resume listening after bot finishes speaking
+        if (conversationMode) {
+          resumeListeningAfterResponse();
+        } else if (!isRecording) {
           document.getElementById('voice-status').classList.remove('active');
         }
       };
 
       synthesis.speak(utterance);
+    }
+
+    function resumeListeningAfterResponse() {
+      // NEW: Resume listening in conversation mode after bot responds
+      if (!conversationMode) return;
+
+      setTimeout(() => {
+        if (conversationMode) {
+          finalTranscript = '';
+          interimTranscript = '';
+          document.getElementById('user-input').value = '';
+          document.getElementById('voice-status-text').textContent = '🎙️ I\'m listening...';
+          document.getElementById('voice-status').classList.add('active');
+        }
+      }, 500);  // Small delay after speech ends
     }
 
     function addMessage(text, sender) {
@@ -583,9 +762,17 @@ html, body {
       const message = messageValue || input.value.trim();
       const displayMessage = displayText || message;
       if (!message) return;
+
       addMessage(displayMessage, "user");
       if (!messageValue) input.value = "";
+
+      // Clear input in conversation mode
+      if (conversationMode) {
+        input.value = "";
+      }
+
       showTypingIndicator();
+
       try {
         const response = await fetch("/api/chatbot/", {
           method: "POST",
@@ -594,6 +781,7 @@ html, body {
         });
         const data = await response.json();
         hideTypingIndicator();
+
         if (data.success) {
           sessionId = data.session_id;
           addMessage(data.message, "bot");
@@ -601,15 +789,27 @@ html, body {
           // Speak the response if voice is enabled
           if (voiceEnabled) {
             speak(data.message);
+          } else if (conversationMode) {
+            // Even without voice output, resume listening in conversation mode
+            resumeListeningAfterResponse();
           }
 
           if (data.options) displayOptions(data.options);
           else document.getElementById("options-container").style.display = "none";
-        } else addMessage("⚠️ Sorry, something went wrong. Please try again.", "bot");
+        } else {
+          addMessage("⚠️ Sorry, something went wrong. Please try again.", "bot");
+          if (conversationMode) {
+            resumeListeningAfterResponse();
+          }
+        }
       } catch (err) {
         hideTypingIndicator();
         addMessage("🌐 Network error. Please check your connection.", "bot");
         console.error(err);
+
+        if (conversationMode) {
+          resumeListeningAfterResponse();
+        }
       }
     }
 
@@ -635,10 +835,10 @@ html, body {
 
       // Show voice feature hint
       setTimeout(() => {
-        const voiceHint = "💡 Tip: Click 🎤 for voice input and 🔊 to hear responses!";
+        const voiceHint = "💡 <strong>NEW: Conversational Voice Mode!</strong><br>Click 🎤 to start - just speak naturally and I'll respond automatically. No need to press Enter!";
         const hintDiv = document.createElement("div");
         hintDiv.className = "message bot-message";
-        hintDiv.innerHTML = `<div class="message-content" style="background: #dbeafe; color: #1e40af;">${voiceHint}</div>`;
+        hintDiv.innerHTML = `<div class="message-content" style="background: #dbeafe; color: #1e40af; padding: 16px 20px;">${voiceHint}</div>`;
         document.getElementById("messages").appendChild(hintDiv);
       }, 1000);
     };
