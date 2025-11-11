@@ -99,7 +99,15 @@ h1 {
   line-height: 1.6;
 }
 
-/* ====== CTA BUTTON ====== */
+/* ====== CTA BUTTONS ====== */
+.cta-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
 .cta-button {
   display: inline-flex;
   align-items: center;
@@ -119,6 +127,15 @@ h1 {
 .cta-button:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 25px rgba(37, 99, 235, 0.4);
+}
+
+.cta-button.voice {
+  background: linear-gradient(135deg, #f43f5e, #ec4899);
+  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.25);
+}
+
+.cta-button.voice:hover {
+  box-shadow: 0 8px 25px rgba(244, 63, 94, 0.4);
 }
 
 /* ====== ADMIN LINK ====== */
@@ -165,21 +182,27 @@ h1 {
 <body>
     <div class="container">
         <h1>Medical Appointment System</h1>
-        <p class="subtitle">Book your appointment with our AI-powered chatbot</p>
+        <p class="subtitle">Book your appointment with our AI-powered voice assistant or chatbot</p>
         
         <div class="features">
             <div class="feature">
-                <div class="feature-icon">🤖</div>
-                <h3>AI Assistant</h3>
-                <p>Smart chatbot understands your symptoms</p>
+                <div class="feature-icon">🎤</div>
+                <h3>Voice Assistant</h3>
+                <p>Book appointments naturally using just your voice</p>
             </div>
-            
+
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>AI-Powered</h3>
+                <p>Smart system understands your symptoms</p>
+            </div>
+
             <div class="feature">
                 <div class="feature-icon">👨‍⚕️</div>
                 <h3>Expert Doctors</h3>
                 <p>Connect with specialized doctors</p>
             </div>
-            
+
             <div class="feature">
                 <div class="feature-icon">⚡</div>
                 <h3>Instant Booking</h3>
@@ -187,10 +210,16 @@ h1 {
             </div>
         </div>
         
-        <a href="{% url 'patient_booking:chatbot' %}" class="cta-button">
-            📅 Book Appointment Now
-        </a>
-        
+        <div class="cta-buttons">
+            <a href="{% url 'patient_booking:chatbot' %}" class="cta-button">
+                📅 Book Appointment
+            </a>
+
+            <a href="{% url 'patient_booking:voice_assistant' %}" class="cta-button voice">
+                🎤 Voice Assistant
+            </a>
+        </div>
+
         <div class="admin-link">
             <p>Staff? <a href="/admin/">Login to Admin Panel</a></p>
         </div>
