@@ -721,7 +721,7 @@ Name:"""
     def _parse_date_with_ai(self, message):
         """Parse date using AI with comprehensive natural language understanding"""
         # First try the existing parser
-        parsed = self.date_parser.parse_date(message)
+        parsed = self.date_parser.parse(message)
         if parsed:
             print(f"Date parsed by DateParser: {parsed}")
             return parsed
