@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'appointments',
     'chatbot',
     'patient_booking',
+    'voicebot',
     'admin_panel',
     'whatsapp_integration',
 ]
