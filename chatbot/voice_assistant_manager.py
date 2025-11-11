@@ -629,40 +629,72 @@ Return ONLY: doctor_name OR symptoms"""
             return 'doctor_name'
 
     def _find_doctor_by_name_ai(self, message):
-        """Find doctor by name with AI enhancement"""
+        """
+        Find doctor by name with enhanced AI extraction
+        Handles partial names, mispronunciations, and informal references
+        """
         try:
+            print(f"[AI NAME] Extracting name from: '{message}'")
+
             # First, use AI to extract the doctor's name
             model = genai.GenerativeModel(self.gemini_model)
-            prompt = f"""Extract the doctor's name from this message: "{message}"
+            prompt = f"""Extract the doctor's name from this voice transcription: "{message}"
+
+IMPORTANT: Patients may say names informally or partially. Be flexible!
+
+Common patterns:
+- Full name: "Dr. Kumar Sharma" → "Kumar Sharma"
+- Last name only: "Doctor Patel" → "Patel"
+- First name only: "I want Kumar" → "Kumar"
+- Partial: "book with shar" → "Shar"
+- Informal: "the heart doctor kumar" → "Kumar"
+- With errors: "I want to see doctor coomar" → "Coomar"
 
 Rules:
-- Remove prefixes like "Dr.", "Doctor", "I want", "I need", "book"
-- Return ONLY the doctor's name (first and/or last name)
-- If no clear doctor name, return "NOT_FOUND"
+1. Extract ANY name-like words (ignore common words like "doctor", "want", "see", "book")
+2. Return the name even if incomplete or misspelled
+3. Preserve the case as spoken
+4. If truly no name, return "NOT_FOUND"
 
 Examples:
 - "Dr. John Smith" → "John Smith"
-- "I want to see Dr. Patel" → "Patel"
-- "book with sarah wilson" → "Sarah Wilson"
+- "I want Patel" → "Patel"
+- "book with sarah" → "Sarah"
+- "kumar doctor" → "Kumar"
+- "I need shar" → "Shar"
+- "the leg doctor" → "NOT_FOUND" (no actual name)
 
-Name:"""
+Extracted name:"""
 
             response = model.generate_content(prompt)
-            extracted_name = response.text.strip().replace('"', '').replace("'", '')
+            extracted_name = response.text.strip().replace('"', '').replace("'", '').strip()
 
-            if extracted_name == "NOT_FOUND":
-                return None
+            print(f"[AI NAME] Extracted: '{extracted_name}'")
+
+            if extracted_name == "NOT_FOUND" or len(extracted_name) < 2:
+                print(f"[AI NAME] No valid name extracted, using direct fuzzy match")
+                return self._find_doctor_by_name(message)
 
             # Now search for doctor with fuzzy matching
-            return self._find_doctor_by_name(extracted_name)
+            doctor = self._find_doctor_by_name(extracted_name)
+
+            if doctor:
+                print(f"[AI NAME] ✅ Found doctor: {doctor.name}")
+            else:
+                print(f"[AI NAME] ❌ No doctor found for: {extracted_name}")
+
+            return doctor
 
         except Exception as e:
-            print(f"AI doctor name extraction error: {e}")
+            print(f"[AI NAME] ⚠️ Error: {e}")
             # Fallback to direct fuzzy matching
             return self._find_doctor_by_name(message)
 
     def _find_doctor_by_name(self, message):
-        """Fuzzy matching for doctor names"""
+        """
+        Enhanced fuzzy matching for doctor names with intelligence for partial names
+        Handles cases where patient doesn't say full name properly
+        """
         cleaned = message.lower().strip()
         cleaned = re.sub(r'^(?:doctor|dr\.?|i want|i need|book)\s+', '', cleaned)
 
@@ -670,30 +702,75 @@ Name:"""
         best_match = None
         best_score = 0
 
+        print(f"[NAME MATCH] Searching for: '{cleaned}'")
+
         for doctor in doctors:
             score = 0
-            doctor_name_lower = doctor.full_name.lower()
-            first_name = doctor.first_name.lower()
-            last_name = doctor.last_name.lower()
+            doctor_name_lower = doctor.name.lower()
 
+            # Parse doctor name into parts
+            name_parts = doctor.name.lower().split()
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[-1] if len(name_parts) > 1 else ""
+            middle_names = name_parts[1:-1] if len(name_parts) > 2 else []
+
+            print(f"[NAME MATCH] Checking: '{doctor.name}' (first: '{first_name}', last: '{last_name}')")
+
+            # Exact full name match (highest priority)
             if cleaned == doctor_name_lower:
                 score = 100
-            elif cleaned == first_name or cleaned == last_name:
+                print(f"[NAME MATCH] ✓ Exact match: {doctor.name}")
+
+            # First name or last name exact match (very high priority)
+            elif cleaned == first_name or (last_name and cleaned == last_name):
                 score = 95
+                print(f"[NAME MATCH] ✓ First/Last name match: {doctor.name}")
+
+            # Patient said partial name that's in full name
             elif doctor_name_lower in cleaned or cleaned in doctor_name_lower:
                 score = 90
-            elif first_name in cleaned or last_name in cleaned:
+                print(f"[NAME MATCH] ✓ Partial match: {doctor.name}")
+
+            # First or last name contained in what patient said
+            elif first_name in cleaned or (last_name and last_name in cleaned):
                 score = 85
+                print(f"[NAME MATCH] ✓ Name part match: {doctor.name}")
+
+            # Check if patient said any part of the name (for compound names like "Kumar Sharma")
+            elif any(part in cleaned for part in name_parts if len(part) > 2):
+                matching_parts = [part for part in name_parts if part in cleaned and len(part) > 2]
+                score = 80 + (len(matching_parts) * 5)  # More matching parts = higher score
+                print(f"[NAME MATCH] ✓ Multiple parts match ({len(matching_parts)}): {doctor.name}")
+
+            # Fuzzy string similarity (for typos/mispronunciation)
             else:
-                similarity = SequenceMatcher(None, cleaned, doctor_name_lower).ratio()
-                if similarity >= 0.7:
-                    score = int(similarity * 80)
+                # Check similarity with full name
+                full_similarity = SequenceMatcher(None, cleaned, doctor_name_lower).ratio()
+
+                # Check similarity with first name
+                first_similarity = SequenceMatcher(None, cleaned, first_name).ratio() if first_name else 0
+
+                # Check similarity with last name
+                last_similarity = SequenceMatcher(None, cleaned, last_name).ratio() if last_name else 0
+
+                # Take the best similarity
+                max_similarity = max(full_similarity, first_similarity, last_similarity)
+
+                if max_similarity >= 0.6:  # Lowered threshold for voice transcription errors
+                    score = int(max_similarity * 75)
+                    print(f"[NAME MATCH] ~ Fuzzy match ({max_similarity:.2f}): {doctor.name}")
 
             if score > best_score:
                 best_score = score
                 best_match = doctor
 
-        return best_match if best_score >= 70 else None
+        if best_match:
+            print(f"[NAME MATCH] ✅ BEST MATCH: {best_match.name} (score: {best_score})")
+        else:
+            print(f"[NAME MATCH] ❌ NO MATCH FOUND for '{cleaned}'")
+
+        # Lower threshold to 60 to catch more partial matches
+        return best_match if best_score >= 60 else None
 
     def _confirm_suggested_doctor(self, message, session_data):
         """Check if user is confirming a suggested doctor"""
