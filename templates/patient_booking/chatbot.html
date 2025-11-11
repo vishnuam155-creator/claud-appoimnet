@@ -63,6 +63,42 @@ html, body {
   color: #6b7280;
 }
 
+.chat-header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: white;
+  text-decoration: none;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+}
+
+.voice-mode-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
+}
+
+.voice-mode-btn .icon {
+  font-size: 18px;
+  animation: pulse-icon 2s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
 /* ====== MAIN CHAT AREA ====== */
 .messages {
   flex: 1;
@@ -356,8 +392,13 @@ html, body {
   <!-- ===== 💬 CHAT INTERFACE ===== -->
   <div class="chat-wrapper">
     <div class="chat-header">
-      <h1><span>🏥</span> AI Medical Assistant</h1>
-      <p>Helping you book appointments smarter</p>
+      <div class="chat-header-content">
+        <h1><span>🏥</span> AI Medical Assistant</h1>
+        <p>Helping you book appointments smarter</p>
+      </div>
+      <a href="{% url 'patient_booking:voice_assistant' %}" class="voice-mode-btn">
+        <span class="icon">🎤</span> Voice Mode
+      </a>
     </div>
 
     <div class="messages" id="messages">

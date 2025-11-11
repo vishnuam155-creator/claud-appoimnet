@@ -15,6 +15,11 @@ def chatbot_page(request):
     return render(request, 'patient_booking/chatbot.html')
 
 
+def voice_assistant_page(request):
+    """Render the voice AI assistant interface"""
+    return render(request, 'patient_booking/voice_assistant.html')
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class ChatbotAPIView(View):
     """

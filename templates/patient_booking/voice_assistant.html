@@ -1,0 +1,817 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Assistant - Book Your Appointment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 20px;
+        }
+
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .voice-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            z-index: 10;
+        }
+
+        .ai-avatar {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar-circle {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 2;
+        }
+
+        .avatar-icon {
+            font-size: 80px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+        }
+
+        /* Wave Animation */
+        .wave-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wave {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            animation: wave-pulse 2s ease-out infinite;
+        }
+
+        .wave:nth-child(2) {
+            animation-delay: 0.5s;
+        }
+
+        .wave:nth-child(3) {
+            animation-delay: 1s;
+        }
+
+        @keyframes wave-pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* Audio Bars Visualization */
+        .audio-bars {
+            display: flex;
+            gap: 6px;
+            height: 60px;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .audio-bars.active {
+            opacity: 1;
+        }
+
+        .audio-bar {
+            width: 6px;
+            height: 20px;
+            background: white;
+            border-radius: 3px;
+            animation: audio-pulse 0.8s ease-in-out infinite;
+        }
+
+        .audio-bar:nth-child(1) { animation-delay: 0s; }
+        .audio-bar:nth-child(2) { animation-delay: 0.1s; }
+        .audio-bar:nth-child(3) { animation-delay: 0.2s; }
+        .audio-bar:nth-child(4) { animation-delay: 0.3s; }
+        .audio-bar:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes audio-pulse {
+            0%, 100% {
+                height: 20px;
+            }
+            50% {
+                height: 50px;
+            }
+        }
+
+        .status-text {
+            font-size: 28px;
+            font-weight: 600;
+            color: white;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            min-height: 40px;
+        }
+
+        .transcript-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 25px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 200px;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .transcript-text {
+            font-size: 18px;
+            color: #333;
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        .transcript-text.user {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .transcript-text.assistant {
+            color: #333;
+            margin-top: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .voice-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: none;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .voice-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+
+        .voice-btn.active {
+            background: #f44336;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 0 20px rgba(244, 67, 54, 0);
+            }
+        }
+
+        .booking-summary {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 500px;
+            margin: 0 auto;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            transform: translateY(150%);
+            transition: transform 0.3s ease;
+        }
+
+        .booking-summary.visible {
+            transform: translateY(0);
+        }
+
+        .booking-summary h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .booking-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .booking-detail:last-child {
+            border-bottom: none;
+        }
+
+        .booking-detail .label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .booking-detail .value {
+            color: #333;
+        }
+
+        .hint-text {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            text-align: center;
+            animation: fade-in-out 2s ease-in-out infinite;
+        }
+
+        @keyframes fade-in-out {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        .error-message {
+            background: #f44336;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        .loading-spinner.visible {
+            display: block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .ai-avatar {
+                width: 200px;
+                height: 200px;
+            }
+
+            .avatar-circle {
+                width: 140px;
+                height: 140px;
+            }
+
+            .avatar-icon {
+                font-size: 60px;
+            }
+
+            .status-text {
+                font-size: 22px;
+            }
+
+            .transcript-container {
+                padding: 20px;
+                max-height: 150px;
+            }
+
+            .transcript-text {
+                font-size: 16px;
+            }
+
+            .voice-btn {
+                width: 70px;
+                height: 70px;
+                font-size: 30px;
+            }
+        }
+
+        .success-animation {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+        }
+
+        .success-animation.visible {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .success-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .success-text {
+            font-size: 24px;
+            font-weight: 600;
+            color: #4caf50;
+            margin-bottom: 10px;
+        }
+
+        .booking-id {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .success-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .success-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" onclick="goBack()">← Back to Chat</button>
+            <div class="logo">🏥 Medical AI Assistant</div>
+        </div>
+
+        <div class="voice-container">
+            <div class="ai-avatar">
+                <div class="wave-container" id="waveContainer">
+                    <div class="wave"></div>
+                    <div class="wave"></div>
+                    <div class="wave"></div>
+                </div>
+                <div class="avatar-circle">
+                    <div class="avatar-icon">🤖</div>
+                </div>
+            </div>
+
+            <div class="audio-bars" id="audioBars">
+                <div class="audio-bar"></div>
+                <div class="audio-bar"></div>
+                <div class="audio-bar"></div>
+                <div class="audio-bar"></div>
+                <div class="audio-bar"></div>
+            </div>
+
+            <div class="status-text" id="statusText">Welcome! Click the microphone to start</div>
+
+            <div class="loading-spinner" id="loadingSpinner"></div>
+
+            <div class="transcript-container" id="transcriptContainer" style="display: none;">
+                <div class="transcript-text" id="transcriptText"></div>
+            </div>
+
+            <div class="controls">
+                <button class="voice-btn" id="micBtn" title="Start Voice Conversation">
+                    🎤
+                </button>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+        </div>
+
+        <div class="booking-summary" id="bookingSummary">
+            <h3>📋 Booking Summary</h3>
+            <div id="bookingDetails"></div>
+        </div>
+
+        <div class="hint-text" id="hintText">Tap the microphone to begin your appointment booking</div>
+
+        <div class="success-animation" id="successAnimation">
+            <div class="success-icon">✅</div>
+            <div class="success-text">Appointment Booked Successfully!</div>
+            <div class="booking-id" id="successBookingId"></div>
+            <button class="success-btn" onclick="goBack()">Back to Home</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = window.location.origin;
+        const CHATBOT_API = `${API_BASE_URL}/api/chatbot/`;
+
+        // State management
+        let sessionId = null;
+        let isListening = false;
+        let isSpeaking = false;
+        let recognition = null;
+        let synthesis = window.speechSynthesis;
+        let currentUtterance = null;
+        let conversationStage = 'greeting';
+        let bookingData = {};
+
+        // DOM elements
+        const micBtn = document.getElementById('micBtn');
+        const statusText = document.getElementById('statusText');
+        const transcriptContainer = document.getElementById('transcriptContainer');
+        const transcriptText = document.getElementById('transcriptText');
+        const audioBars = document.getElementById('audioBars');
+        const waveContainer = document.getElementById('waveContainer');
+        const bookingSummary = document.getElementById('bookingSummary');
+        const bookingDetails = document.getElementById('bookingDetails');
+        const errorMessage = document.getElementById('errorMessage');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const hintText = document.getElementById('hintText');
+        const successAnimation = document.getElementById('successAnimation');
+        const successBookingId = document.getElementById('successBookingId');
+
+        // Initialize Speech Recognition
+        function initSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                showError('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+                return false;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-IN';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('active');
+                statusText.textContent = 'Listening... Speak now';
+                audioBars.classList.add('active');
+                waveContainer.style.display = 'flex';
+                hintText.style.display = 'none';
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                // Show interim results
+                if (interimTranscript) {
+                    transcriptContainer.style.display = 'block';
+                    transcriptText.innerHTML = `<div class="transcript-text user">${interimTranscript}</div>`;
+                }
+
+                // Process final transcript
+                if (finalTranscript) {
+                    processUserInput(finalTranscript);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                if (event.error === 'no-speech') {
+                    showError('No speech detected. Please try again.');
+                } else if (event.error === 'not-allowed') {
+                    showError('Microphone access denied. Please enable microphone permissions.');
+                } else {
+                    showError(`Recognition error: ${event.error}`);
+                }
+                stopListening();
+            };
+
+            recognition.onend = () => {
+                stopListening();
+            };
+
+            return true;
+        }
+
+        // Start listening
+        function startListening() {
+            if (!recognition && !initSpeechRecognition()) {
+                return;
+            }
+
+            try {
+                recognition.start();
+            } catch (error) {
+                console.error('Error starting recognition:', error);
+                showError('Failed to start voice recognition. Please try again.');
+            }
+        }
+
+        // Stop listening
+        function stopListening() {
+            isListening = false;
+            micBtn.classList.remove('active');
+            audioBars.classList.remove('active');
+            if (!isSpeaking) {
+                statusText.textContent = 'Processing...';
+            }
+        }
+
+        // Text-to-Speech
+        function speak(text) {
+            return new Promise((resolve) => {
+                // Cancel any ongoing speech
+                synthesis.cancel();
+
+                isSpeaking = true;
+                statusText.textContent = 'AI is speaking...';
+                audioBars.classList.add('active');
+                waveContainer.style.display = 'flex';
+
+                currentUtterance = new SpeechSynthesisUtterance(text);
+                currentUtterance.lang = 'en-IN';
+                currentUtterance.rate = 0.9;
+                currentUtterance.pitch = 1;
+                currentUtterance.volume = 1;
+
+                // Try to use a more natural voice
+                const voices = synthesis.getVoices();
+                const preferredVoice = voices.find(voice =>
+                    voice.lang.includes('en-IN') || voice.lang.includes('en-GB')
+                );
+                if (preferredVoice) {
+                    currentUtterance.voice = preferredVoice;
+                }
+
+                currentUtterance.onend = () => {
+                    isSpeaking = false;
+                    audioBars.classList.remove('active');
+                    statusText.textContent = 'Your turn to speak';
+                    resolve();
+
+                    // Auto-start listening for next input if not in final stage
+                    if (conversationStage !== 'completed') {
+                        setTimeout(() => {
+                            startListening();
+                        }, 500);
+                    }
+                };
+
+                currentUtterance.onerror = (error) => {
+                    console.error('Speech synthesis error:', error);
+                    isSpeaking = false;
+                    audioBars.classList.remove('active');
+                    resolve();
+                };
+
+                synthesis.speak(currentUtterance);
+            });
+        }
+
+        // Process user input
+        async function processUserInput(userMessage) {
+            transcriptContainer.style.display = 'block';
+            transcriptText.innerHTML = `<div class="transcript-text user">You: ${userMessage}</div>`;
+
+            loadingSpinner.classList.add('visible');
+            statusText.textContent = 'Processing...';
+
+            try {
+                const response = await fetch(CHATBOT_API, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: userMessage,
+                        session_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to process request');
+                }
+
+                loadingSpinner.classList.remove('visible');
+
+                // Update session ID
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                }
+
+                // Update transcript with AI response
+                transcriptText.innerHTML += `<div class="transcript-text assistant">AI: ${data.message}</div>`;
+
+                // Update booking summary
+                updateBookingSummary(data);
+
+                // Speak the response
+                await speak(data.message);
+
+                // Check if booking is completed
+                if (data.booking_id) {
+                    conversationStage = 'completed';
+                    showSuccessAnimation(data.booking_id);
+                }
+
+            } catch (error) {
+                console.error('Error processing input:', error);
+                loadingSpinner.classList.remove('visible');
+                showError(error.message || 'Failed to process your request. Please try again.');
+                statusText.textContent = 'Ready to listen';
+            }
+        }
+
+        // Update booking summary
+        function updateBookingSummary(data) {
+            // Extract booking data from session or response
+            const details = [];
+
+            if (data.stage) {
+                conversationStage = data.stage;
+            }
+
+            // Try to extract details from the conversation
+            // This would ideally come from the backend session data
+            if (data.booking_id) {
+                bookingSummary.classList.add('visible');
+                // The booking is complete, show final summary
+            }
+        }
+
+        // Show success animation
+        function showSuccessAnimation(bookingId) {
+            successBookingId.textContent = `Booking ID: ${bookingId}`;
+            successAnimation.classList.add('visible');
+            waveContainer.style.display = 'none';
+            audioBars.classList.remove('active');
+            statusText.textContent = 'Booking Complete! ✨';
+            micBtn.style.display = 'none';
+        }
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('visible');
+            setTimeout(() => {
+                errorMessage.classList.remove('visible');
+            }, 5000);
+        }
+
+        // Microphone button click handler
+        micBtn.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                startListening();
+            }
+        });
+
+        // Go back to previous page
+        function goBack() {
+            window.location.href = '/chatbot/';
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            // Load voices
+            if (synthesis.onvoiceschanged !== undefined) {
+                synthesis.onvoiceschanged = () => {
+                    synthesis.getVoices();
+                };
+            }
+
+            // Auto-start with greeting
+            setTimeout(async () => {
+                const greeting = "Hello! I'm your AI medical assistant. I'll help you book an appointment. May I know your name?";
+                transcriptText.innerHTML = `<div class="transcript-text assistant">AI: ${greeting}</div>`;
+                transcriptContainer.style.display = 'block';
+                await speak(greeting);
+            }, 1000);
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (recognition) {
+                recognition.stop();
+            }
+            if (synthesis) {
+                synthesis.cancel();
+            }
+        });
+    </script>
+</body>
+</html>

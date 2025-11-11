@@ -99,7 +99,15 @@ h1 {
   line-height: 1.6;
 }
 
-/* ====== CTA BUTTON ====== */
+/* ====== CTA BUTTONS ====== */
+.cta-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 .cta-button {
   display: inline-flex;
   align-items: center;
@@ -114,11 +122,52 @@ h1 {
   letter-spacing: 0.2px;
   transition: all 0.3s ease;
   box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25);
+  min-width: 280px;
+  justify-content: center;
 }
 
 .cta-button:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 25px rgba(37, 99, 235, 0.4);
+}
+
+.cta-button.voice {
+  background: linear-gradient(135deg, #059669, #10b981);
+  box-shadow: 0 4px 15px rgba(5, 150, 105, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.cta-button.voice::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.cta-button.voice:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.cta-button.voice:hover {
+  box-shadow: 0 8px 25px rgba(5, 150, 105, 0.4);
+}
+
+.cta-button .icon {
+  font-size: 24px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 /* ====== ADMIN LINK ====== */
@@ -187,10 +236,16 @@ h1 {
             </div>
         </div>
         
-        <a href="{% url 'patient_booking:chatbot' %}" class="cta-button">
-            📅 Book Appointment Now
-        </a>
-        
+        <div class="cta-buttons">
+            <a href="{% url 'patient_booking:voice_assistant' %}" class="cta-button voice">
+                <span class="icon">🎤</span> Voice AI Assistant
+            </a>
+
+            <a href="{% url 'patient_booking:chatbot' %}" class="cta-button">
+                💬 Text Chat Assistant
+            </a>
+        </div>
+
         <div class="admin-link">
             <p>Staff? <a href="/admin/">Login to Admin Panel</a></p>
         </div>
