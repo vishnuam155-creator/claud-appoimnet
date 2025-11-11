@@ -220,22 +220,37 @@ class VoiceAssistantManager:
             return self._analyze_symptoms_and_suggest_ai(message, session_data)
 
     def _analyze_symptoms_and_suggest_ai(self, message, session_data):
-        """Analyze symptoms using Gemini AI and suggest doctor"""
+        """Analyze symptoms using Gemini AI and suggest doctor - with full context"""
 
         try:
+            # Get all available specializations for context
+            all_specializations = Specialization.objects.all()
+            available_spec_names = [spec.name for spec in all_specializations]
+
             # Use Gemini to analyze symptoms
             analysis = self.claude_service.analyze_symptoms(message)
             specialization_name = analysis.get('specialization', '').lower()
             confidence = analysis.get('confidence', 'low')
             reasoning = analysis.get('reasoning', '')
 
-            if not specialization_name:
-                return {
-                    'message': STAGE_PROMPTS['doctor_selection']['symptoms_unclear'],
-                    'stage': 'doctor_selection',
-                    'data': session_data,
-                    'action': 'continue'
-                }
+            if not specialization_name or specialization_name == 'general physician':
+                # If AI couldn't determine or defaulted to general physician
+                # Try to find general physician first
+                general_physician = Specialization.objects.filter(
+                    name__icontains='general'
+                ).first()
+
+                if general_physician:
+                    specialization_name = general_physician.name.lower()
+                else:
+                    # Provide available specializations
+                    available_specs_text = ", ".join(available_spec_names)
+                    return {
+                        'message': STAGE_PROMPTS['doctor_selection']['symptoms_unclear'] + f" We have these specializations available: {available_specs_text}.",
+                        'stage': 'doctor_selection',
+                        'data': session_data,
+                        'action': 'continue'
+                    }
 
             # Find matching specialization
             specialization = Specialization.objects.filter(
@@ -244,16 +259,21 @@ class VoiceAssistantManager:
 
             if not specialization:
                 # Try keyword match
-                all_specs = Specialization.objects.all()
-                for spec in all_specs:
+                for spec in all_specializations:
                     keywords = spec.keywords.lower() if spec.keywords else ""
                     if any(keyword in message.lower() for keyword in keywords.split(',')):
                         specialization = spec
                         break
 
             if not specialization:
+                # Specialization not found - show available ones
+                available_specs_text = ", ".join(available_spec_names)
+                error_msg = STAGE_PROMPTS['doctor_selection']['no_specialization_match'].format(
+                    suggested_spec=specialization_name.title(),
+                    available_specs=available_specs_text
+                )
                 return {
-                    'message': f"Based on your symptoms, I think you might need a {specialization_name}, but I don't have that specialization available right now. Could you tell me what type of doctor you're looking for? For example, 'general physician', 'cardiologist', or 'dermatologist'?",
+                    'message': error_msg,
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -303,8 +323,21 @@ class VoiceAssistantManager:
 
         except Exception as e:
             print(f"Error analyzing symptoms with AI: {e}")
+
+            # Get available specializations to help user
+            try:
+                all_specializations = Specialization.objects.all()
+                available_spec_names = [spec.name for spec in all_specializations]
+                available_specs_text = ", ".join(available_spec_names)
+
+                error_msg = STAGE_PROMPTS['doctor_selection']['symptom_analysis_error'].format(
+                    available_specs=available_specs_text
+                )
+            except Exception:
+                error_msg = STAGE_PROMPTS['doctor_selection']['symptoms_unclear']
+
             return {
-                'message': "I'm having trouble analyzing your symptoms right now. Could you tell me which doctor you'd like to see by their name? Or try describing your symptoms again?",
+                'message': error_msg,
                 'stage': 'doctor_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -364,7 +397,7 @@ class VoiceAssistantManager:
                 doctor_id = confirmed_doctor.id
             else:
                 return {
-                    'message': "I noticed you mentioned a date, but we haven't selected a doctor yet. Which doctor would you like to book with?",
+                    'message': STAGE_PROMPTS['date_selection']['no_doctor_selected'],
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -377,15 +410,21 @@ class VoiceAssistantManager:
             next_available = self._find_next_available_date(doctor_id, parsed_date)
             if next_available:
                 next_date_formatted = next_available.strftime('%B %d, %Y')
+                current_date_formatted = parsed_date.strftime('%B %d, %Y')
+
+                no_slots_msg = STAGE_PROMPTS['date_selection']['no_slots'].format(
+                    date=current_date_formatted,
+                    alternative_date=next_date_formatted
+                )
                 return {
-                    'message': f"I'm sorry, the doctor isn't available on {parsed_date.strftime('%B %d, %Y')}. However, the next available date is {next_date_formatted}. Would you like to book on that date instead?",
+                    'message': no_slots_msg,
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
                 }
             else:
                 return {
-                    'message': "Unfortunately, the doctor doesn't have any availability in the next few weeks. Would you like to try a different doctor or check dates further out?",
+                    'message': STAGE_PROMPTS['date_selection']['no_availability'],
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -399,8 +438,13 @@ class VoiceAssistantManager:
         time_options = self._format_time_slots_for_voice(available_slots)
         date_formatted = parsed_date.strftime('%B %d, %Y')
 
+        slots_msg = STAGE_PROMPTS['time_selection']['slots_shown'].format(
+            date=date_formatted,
+            time_slots=time_options
+        )
+
         return {
-            'message': f"Perfect! {date_formatted} works. The doctor has several time slots available: {time_options}. Which time would be most convenient for you?",
+            'message': slots_msg,
             'stage': 'time_selection',
             'data': session_data,
             'action': 'continue'
@@ -447,15 +491,24 @@ class VoiceAssistantManager:
                 alt_slots = [s for s in available_slots if s['available']][:3]
                 if alt_slots:
                     alt_times = ", ".join([s['time'] for s in alt_slots])
+                    booked_msg = STAGE_PROMPTS['time_selection']['time_booked'].format(
+                        time=selected_time,
+                        alternatives=alt_times
+                    )
                     return {
-                        'message': f"I'm sorry, {selected_time} is already booked. Here are some available times: {alt_times}. Which one works better for you?",
+                        'message': booked_msg,
                         'stage': 'time_selection',
                         'data': session_data,
                         'action': 'continue'
                     }
 
+            # Time not found in available slots
+            time_slots_formatted = self._format_time_slots_for_voice(available_slots)
+            not_available_msg = STAGE_PROMPTS['time_selection']['time_not_available'].format(
+                time_slots=time_slots_formatted
+            )
             return {
-                'message': "That time slot isn't available. Let me tell you the available times again: " + self._format_time_slots_for_voice(available_slots) + ". Which time would you like?",
+                'message': not_available_msg,
                 'stage': 'time_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -464,8 +517,12 @@ class VoiceAssistantManager:
         session_data['appointment_time'] = matched_slot['time']
         session_data['stage'] = 'phone_collection'
 
+        success_msg = STAGE_PROMPTS['time_selection']['success'].format(
+            time=matched_slot['time']
+        )
+
         return {
-            'message': f"Excellent! I've reserved {matched_slot['time']} for you. Now, I'll need your phone number so we can send you a confirmation message. What's your 10-digit mobile number?",
+            'message': success_msg,
             'stage': 'phone_collection',
             'data': session_data,
             'action': 'continue'
