@@ -20,22 +20,33 @@ from chatbot.date_parser import DateParser
 
 class VoiceAssistantManager:
     """
-    AI-Powered Voice Assistant for Appointment Booking
-    Uses Gemini AI for intelligent natural language understanding
+    AI-Powered Senior Booking Specialist for Appointment Booking
+    Acts like a professional senior booking specialist with comprehensive intelligence
+    Uses Gemini AI for intelligent natural language understanding and decision-making
     """
 
-    ASSISTANT_NAME = "MediBot"
+    ASSISTANT_NAME = "MediBot Senior Booking Specialist"
+    SPECIALIST_ROLE = "Senior Medical Booking Specialist"
 
     # Conversation stages
     STAGES = {
         'greeting': 'greeting',
         'patient_name': 'patient_name',
+        'urgency_assessment': 'urgency_assessment',
         'doctor_selection': 'doctor_selection',
         'date_selection': 'date_selection',
         'time_selection': 'time_selection',
         'phone_collection': 'phone_collection',
         'confirmation': 'confirmation',
         'completed': 'completed'
+    }
+
+    # Booking type classification
+    BOOKING_TYPES = {
+        'urgent': 'Urgent Care',
+        'routine': 'Routine Checkup',
+        'follow_up': 'Follow-up Consultation',
+        'emergency': 'Emergency'
     }
 
     def __init__(self, session_id):
@@ -46,6 +57,14 @@ class VoiceAssistantManager:
         # Configure Gemini
         genai.configure(api_key=settings.ANTHROPIC_API_KEY)
         self.gemini_model = "gemini-2.5-flash"
+
+        # Senior specialist attributes
+        self.urgency_keywords = {
+            'emergency': ['emergency', 'urgent', 'severe', 'critical', 'acute', 'immediately', 'asap', 'now'],
+            'high_priority': ['pain', 'bleeding', 'fever', 'can\'t breathe', 'chest pain', 'difficulty breathing'],
+            'moderate': ['soon', 'this week', 'few days', 'uncomfortable'],
+            'routine': ['checkup', 'routine', 'regular', 'follow up', 'follow-up', 'general']
+        }
 
     def process_voice_message(self, message, session_data):
         """
@@ -78,6 +97,7 @@ class VoiceAssistantManager:
         handlers = {
             'greeting': self._handle_greeting,
             'patient_name': self._handle_patient_name_ai,
+            'urgency_assessment': self._handle_urgency_assessment,
             'doctor_selection': self._handle_doctor_selection_ai,
             'date_selection': self._handle_date_selection_ai,
             'time_selection': self._handle_time_selection_ai,
@@ -93,18 +113,18 @@ class VoiceAssistantManager:
         return self.claude_service.detect_intent(message, stage, session_data)
 
     def _handle_greeting(self, message, session_data):
-        """Initial greeting with AI intelligence"""
+        """Initial greeting with senior specialist professionalism"""
 
         # Check if user already provided their name using AI
         if message and len(message.strip()) > 2:
             name_extracted = self._extract_name_with_ai(message)
             if name_extracted:
                 session_data['patient_name'] = name_extracted
-                session_data['stage'] = 'doctor_selection'
+                session_data['stage'] = 'urgency_assessment'
 
                 return {
-                    'message': f"Hello {name_extracted}! It's wonderful to meet you. I'm {self.ASSISTANT_NAME}, your intelligent voice assistant. I'm here to help you book a medical appointment smoothly. Could you tell me which doctor you'd like to see, or describe what symptoms you're experiencing? I'll help you find the right doctor.",
-                    'stage': 'doctor_selection',
+                    'message': f"Good day {name_extracted}! I'm {self.SPECIALIST_ROLE}, and I'll personally assist you with your appointment booking today. With years of experience in healthcare scheduling, I'm here to ensure you get the best care at the most suitable time. Before we proceed, I'd like to understand your medical needs better. Could you please describe what brings you in today? Are you experiencing any specific symptoms, or is this a routine visit?",
+                    'stage': 'urgency_assessment',
                     'data': session_data,
                     'action': 'continue'
                 }
@@ -112,7 +132,7 @@ class VoiceAssistantManager:
         # Standard greeting
         session_data['stage'] = 'patient_name'
         return {
-            'message': f"Hello! I'm {self.ASSISTANT_NAME}, your AI-powered medical assistant. I'm here to help you book an appointment quickly and easily. May I know your name please?",
+            'message': f"Good day! I'm your {self.SPECIALIST_ROLE}, and I'm here to provide you with expert assistance in booking your medical appointment. Think of me as your personal healthcare scheduling expert who will carefully review all doctor details, their specializations, experience, and available time slots to find the perfect match for your needs. May I have your name to begin?",
             'stage': 'patient_name',
             'data': session_data,
             'action': 'continue'
@@ -141,21 +161,78 @@ class VoiceAssistantManager:
             }
 
         session_data['patient_name'] = patient_name
-        session_data['stage'] = 'doctor_selection'
+        session_data['stage'] = 'urgency_assessment'
 
         return {
-            'message': f"Wonderful to meet you, {patient_name}! Now, I can help you find the right doctor. You can either tell me a specific doctor's name you'd like to see, or describe your symptoms and I'll recommend the best specialist for you. What would you prefer?",
-            'stage': 'doctor_selection',
+            'message': f"It's a pleasure to assist you, {patient_name}. As your dedicated booking specialist, I want to ensure we find the most appropriate doctor and time slot for your specific needs. To do this effectively, I need to understand what brings you in today. Could you please tell me: Are you experiencing any symptoms or health concerns? Or perhaps this is a routine checkup or follow-up appointment? This will help me match you with the right specialist and prioritize your booking appropriately.",
+            'stage': 'urgency_assessment',
             'data': session_data,
             'action': 'continue'
         }
 
+    def _handle_urgency_assessment(self, message, session_data):
+        """
+        Senior specialist urgency assessment and booking type classification
+        Determines priority and helps match with appropriate doctor and time slots
+        """
+        if not message:
+            return {
+                'message': "I didn't catch that. Please tell me what brings you in today - are you experiencing symptoms, or is this a routine visit?",
+                'stage': 'urgency_assessment',
+                'data': session_data,
+                'action': 'continue'
+            }
+
+        # Assess urgency level using AI and keywords
+        urgency_level = self._assess_urgency_level(message)
+        booking_type = self._classify_booking_type(message, urgency_level)
+
+        session_data['symptoms_description'] = message
+        session_data['urgency_level'] = urgency_level
+        session_data['booking_type'] = booking_type
+
+        # Provide empathetic response based on urgency
+        if urgency_level == 'emergency':
+            return {
+                'message': f"I understand this is urgent, {session_data['patient_name']}. For emergency situations, I strongly recommend you visit the emergency room or call emergency services immediately. However, if you'd still like to book an urgent appointment, I'll do my best to find you the earliest available slot with an experienced specialist. Shall we proceed with the booking?",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
+        elif urgency_level == 'high_priority':
+            session_data['stage'] = 'doctor_selection'
+            return {
+                'message': f"I understand you're experiencing discomfort, and I want to help you get care as quickly as possible. I'll prioritize finding you an appointment with one of our most experienced doctors at the earliest available time. Let me analyze your symptoms and match you with the right specialist. Please give me a moment...",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
+        elif urgency_level == 'moderate':
+            session_data['stage'] = 'doctor_selection'
+            return {
+                'message': f"Thank you for sharing that with me. I'll help you find a suitable appointment within the next few days. Based on what you've described, I'll recommend doctors who specialize in this area and have good availability. Let me check our specialists...",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
+        else:  # routine
+            session_data['stage'] = 'doctor_selection'
+            return {
+                'message': f"Perfect! For a {booking_type.lower()}, I'll help you find the right doctor and a convenient time that fits your schedule. Would you like to see a specific doctor, or shall I recommend someone based on your needs?",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
+
     def _handle_doctor_selection_ai(self, message, session_data):
-        """Handle doctor selection with AI - name or symptoms"""
+        """
+        Handle doctor selection with senior specialist intelligence
+        Comprehensive checking of doctor experience, specialization, and availability
+        """
 
         if not message:
             return {
-                'message': "I didn't hear anything. Could you please tell me which doctor you'd like to see, or describe your symptoms?",
+                'message': "I didn't hear anything. Could you please tell me which doctor you'd like to see, or let me recommend based on your symptoms?",
                 'stage': 'doctor_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -170,25 +247,36 @@ class VoiceAssistantManager:
 
             if doctor:
                 session_data['doctor_id'] = doctor.id
-                session_data['doctor_name'] = doctor.full_name
+                session_data['doctor_name'] = doctor.name
                 session_data['stage'] = 'date_selection'
 
+                # Provide comprehensive doctor details like a senior specialist
+                doctor_details = self._get_comprehensive_doctor_details(doctor)
+
                 return {
-                    'message': f"Excellent! I found Dr. {doctor.full_name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
+                    'message': f"Excellent choice! Let me provide you with complete details about Dr. {doctor.name}. {doctor_details} Based on my review, Dr. {doctor.name} is well-qualified for your needs. Now, what date would you like to schedule your appointment? I can check availability for today, tomorrow, specific dates, or days of the week.",
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
                 }
             else:
                 return {
-                    'message': "I couldn't find a doctor with that name. Could you try saying the doctor's name again, or would you like to describe your symptoms so I can recommend a suitable doctor?",
+                    'message': "I've thoroughly checked our database, but I couldn't find a doctor with that exact name. Could you please spell the name differently, or would you prefer that I recommend an experienced specialist based on your symptoms? As a senior booking specialist, I can match you with the most suitable doctor.",
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
                 }
         else:
-            # Treat as symptoms and analyze with AI
-            return self._analyze_symptoms_and_suggest_ai(message, session_data)
+            # Treat as symptoms and analyze with AI - or from urgency assessment
+            # Check if we already have symptoms from urgency assessment
+            if session_data.get('symptoms_description') and not message.lower() in ['yes', 'ok', 'okay', 'sure', 'proceed']:
+                # New symptoms mentioned, update
+                session_data['symptoms_description'] = message
+
+            return self._analyze_symptoms_and_suggest_ai(
+                session_data.get('symptoms_description', message),
+                session_data
+            )
 
     def _analyze_symptoms_and_suggest_ai(self, message, session_data):
         """Analyze symptoms using Gemini AI and suggest doctor"""
@@ -231,10 +319,21 @@ class VoiceAssistantManager:
                 }
 
             # Get available doctors for this specialization
-            doctors = Doctor.objects.filter(
-                specialization=specialization,
-                is_available=True
-            ).order_by('consultation_fee')
+            # Senior specialist logic: prioritize by experience for urgent cases
+            urgency_level = session_data.get('urgency_level', 'routine')
+
+            if urgency_level in ['emergency', 'high_priority']:
+                # Prioritize by experience for urgent cases
+                doctors = Doctor.objects.filter(
+                    specialization=specialization,
+                    is_active=True
+                ).order_by('-experience_years', 'consultation_fee')
+            else:
+                # Balance between experience and cost for routine cases
+                doctors = Doctor.objects.filter(
+                    specialization=specialization,
+                    is_active=True
+                ).order_by('consultation_fee', '-experience_years')
 
             if not doctors.exists():
                 return {
@@ -244,26 +343,41 @@ class VoiceAssistantManager:
                     'action': 'continue'
                 }
 
-            # Suggest doctor(s) with AI-generated response
+            # Suggest doctor(s) with comprehensive AI-generated response
             suggested_doctor = doctors.first()
 
             session_data['suggested_doctors'] = [
-                {'id': doc.id, 'name': doc.full_name, 'fee': doc.consultation_fee}
+                {'id': doc.id, 'name': doc.name, 'fee': str(doc.consultation_fee), 'experience': doc.experience_years}
                 for doc in doctors[:3]
             ]
             session_data['suggested_specialization'] = specialization.name
 
-            # Generate intelligent response
-            if doctors.count() == 1:
-                message_text = f"Based on your symptoms - {reasoning} - I recommend Dr. {suggested_doctor.full_name}, our {specialization.name}. The consultation fee is {suggested_doctor.consultation_fee} rupees. Would you like to book an appointment with Dr. {suggested_doctor.full_name}? Just say 'yes' or 'book it'."
-            else:
-                other_doctors = [f"Dr. {doc.full_name} for {doc.consultation_fee} rupees" for doc in doctors[1:3]]
-                other_doctors_text = ", or ".join(other_doctors) if other_doctors else ""
+            # Get comprehensive details about suggested doctor
+            doctor_details = self._get_comprehensive_doctor_details(suggested_doctor)
 
-                message_text = f"Based on your symptoms, I recommend seeing a {specialization.name}. I suggest Dr. {suggested_doctor.full_name} who charges {suggested_doctor.consultation_fee} rupees. "
-                if other_doctors_text:
-                    message_text += f"We also have {other_doctors_text}. "
-                message_text += f"Which doctor would you like to book with? You can say the doctor's name."
+            # Generate intelligent response as senior specialist
+            if doctors.count() == 1:
+                message_text = f"After carefully analyzing your symptoms - {reasoning} - I strongly recommend Dr. {suggested_doctor.name}. {doctor_details} Dr. {suggested_doctor.name} is our specialist in {specialization.name} and is well-suited for your case. Would you like to proceed with booking an appointment with Dr. {suggested_doctor.name}? Just say 'yes' to continue."
+            else:
+                # Provide detailed comparison
+                urgency_note = ""
+                if urgency_level in ['emergency', 'high_priority']:
+                    urgency_note = f"Given the urgency of your situation, I've prioritized our most experienced doctors. "
+
+                message_text = f"Based on my thorough analysis of your symptoms, I recommend seeing a {specialization.name}. {urgency_note}"
+                message_text += f"I particularly recommend Dr. {suggested_doctor.name}. {doctor_details} "
+
+                if doctors.count() > 1:
+                    other_doctors_list = []
+                    for doc in doctors[1:3]:
+                        other_doctors_list.append(
+                            f"Dr. {doc.name} ({doc.experience_years} years experience, {doc.consultation_fee} rupees)"
+                        )
+
+                    if other_doctors_list:
+                        message_text += f"We also have excellent alternatives: {', or '.join(other_doctors_list)}. "
+
+                message_text += f"Which doctor would you like me to book for you? You can say the doctor's name."
 
             return {
                 'message': message_text,
@@ -331,7 +445,7 @@ class VoiceAssistantManager:
             confirmed_doctor = self._confirm_suggested_doctor(message, session_data)
             if confirmed_doctor:
                 session_data['doctor_id'] = confirmed_doctor.id
-                session_data['doctor_name'] = confirmed_doctor.full_name
+                session_data['doctor_name'] = confirmed_doctor.name
                 doctor_id = confirmed_doctor.id
             else:
                 return {
@@ -366,12 +480,21 @@ class VoiceAssistantManager:
         session_data['available_slots'] = available_slots
         session_data['stage'] = 'time_selection'
 
-        # Format slots for voice
+        # Format slots for voice with professional context
         time_options = self._format_time_slots_for_voice(available_slots)
         date_formatted = parsed_date.strftime('%B %d, %Y')
 
+        # Add intelligent recommendation based on urgency
+        urgency_level = session_data.get('urgency_level', 'routine')
+        recommendation = ""
+
+        if urgency_level in ['emergency', 'high_priority'] and available_slots:
+            earliest_slot = next((slot for slot in available_slots if slot['available']), None)
+            if earliest_slot:
+                recommendation = f" As this is a priority case, I recommend taking the earliest slot at {earliest_slot['time']} to ensure you receive timely care."
+
         return {
-            'message': f"Perfect! {date_formatted} works. The doctor has several time slots available: {time_options}. Which time would be most convenient for you?",
+            'message': f"Excellent! {date_formatted} is available. I've checked all the time slots for you. The doctor has the following times open: {time_options}.{recommendation} Which time works best for your schedule?",
             'stage': 'time_selection',
             'data': session_data,
             'action': 'continue'
@@ -435,8 +558,16 @@ class VoiceAssistantManager:
         session_data['appointment_time'] = matched_slot['time']
         session_data['stage'] = 'phone_collection'
 
+        # Add professional note based on urgency
+        urgency_level = session_data.get('urgency_level', 'routine')
+        urgency_note = ""
+        if urgency_level == 'high_priority':
+            urgency_note = " Given the urgency, I've prioritized this time slot for you."
+        elif urgency_level == 'emergency':
+            urgency_note = " This is the earliest available slot I could secure for you."
+
         return {
-            'message': f"Excellent! I've reserved {matched_slot['time']} for you. Now, I'll need your phone number so we can send you a confirmation message. What's your 10-digit mobile number?",
+            'message': f"Perfect! I've successfully reserved {matched_slot['time']} for your appointment.{urgency_note} Now, to complete your booking and send you a confirmation message, I'll need your 10-digit mobile number. What's your contact number?",
             'stage': 'phone_collection',
             'data': session_data,
             'action': 'continue'
@@ -483,7 +614,7 @@ class VoiceAssistantManager:
         # Format phone number for speaking (e.g., "98765 43210")
         phone_formatted = f"{phone[:5]} {phone[5:]}"
 
-        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.full_name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
+        summary = f"Perfect! Let me confirm your appointment details as your senior booking specialist. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.name}, who is a {doctor.specialization.name} with {doctor.experience_years} years of experience. The appointment is scheduled for {date_str} at {session_data['appointment_time']}. Your contact number is {phone_formatted}. The consultation fee will be {doctor.consultation_fee} rupees. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
 
         return {
             'message': summary,
@@ -519,7 +650,7 @@ class VoiceAssistantManager:
                     date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
 
                     return {
-                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.full_name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
+                        'message': f"Excellent news! As your senior booking specialist, I've successfully confirmed your appointment. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.name}, {doctor.specialization.name}, on {date_str} at {session_data['appointment_time']}. The consultation fee is {doctor.consultation_fee} rupees. Please arrive 10 minutes early. Is there anything else I can help you with today?",
                         'stage': 'completed',
                         'data': session_data,
                         'action': 'booking_complete'
@@ -556,6 +687,123 @@ class VoiceAssistantManager:
                 'data': session_data,
                 'action': 'continue'
             }
+
+    # ========== Senior Specialist Intelligence Methods ==========
+
+    def _assess_urgency_level(self, message):
+        """
+        Assess urgency level from patient's message
+        Uses keyword matching and AI for intelligent assessment
+        """
+        message_lower = message.lower()
+
+        # Check for emergency keywords
+        for keyword in self.urgency_keywords['emergency']:
+            if keyword in message_lower:
+                return 'emergency'
+
+        # Check for high priority keywords
+        for keyword in self.urgency_keywords['high_priority']:
+            if keyword in message_lower:
+                return 'high_priority'
+
+        # Check for moderate keywords
+        for keyword in self.urgency_keywords['moderate']:
+            if keyword in message_lower:
+                return 'moderate'
+
+        # Check for routine keywords
+        for keyword in self.urgency_keywords['routine']:
+            if keyword in message_lower:
+                return 'routine'
+
+        # Default to moderate if uncertain
+        return 'moderate'
+
+    def _classify_booking_type(self, message, urgency_level):
+        """
+        Classify the type of booking based on message and urgency
+        """
+        message_lower = message.lower()
+
+        if urgency_level == 'emergency':
+            return self.BOOKING_TYPES['emergency']
+        elif 'follow' in message_lower or 'followup' in message_lower:
+            return self.BOOKING_TYPES['follow_up']
+        elif urgency_level in ['high_priority', 'moderate']:
+            return self.BOOKING_TYPES['urgent']
+        else:
+            return self.BOOKING_TYPES['routine']
+
+    def _get_comprehensive_doctor_details(self, doctor):
+        """
+        Get comprehensive doctor details like a senior specialist would provide
+        Includes experience, qualifications, specialization, and fee
+        """
+        details = []
+
+        # Experience
+        if doctor.experience_years > 0:
+            exp_text = f"Dr. {doctor.name} brings {doctor.experience_years} years of valuable medical experience"
+            details.append(exp_text)
+
+        # Qualification
+        if doctor.qualification:
+            details.append(f"with qualifications in {doctor.qualification}")
+
+        # Specialization
+        details.append(f"specializing in {doctor.specialization.name}")
+
+        # Consultation fee
+        details.append(f"The consultation fee is {doctor.consultation_fee} rupees")
+
+        # Combine details naturally
+        if len(details) == 4:
+            return f"{details[0]} {details[1]}, {details[2]}. {details[3]}."
+        elif len(details) == 3:
+            return f"{details[0]}, {details[1]}. {details[2]}."
+        else:
+            return ". ".join(details) + "."
+
+    def _check_doctor_comprehensive_availability(self, doctor, urgency_level):
+        """
+        Comprehensive availability check for doctor
+        Checks schedules, leaves, and current bookings
+        """
+        from doctors.models import DoctorLeave
+        from django.utils import timezone
+
+        today = timezone.now().date()
+
+        # Check if doctor is on leave
+        on_leave = DoctorLeave.objects.filter(
+            doctor=doctor,
+            start_date__lte=today,
+            end_date__gte=today
+        ).exists()
+
+        if on_leave:
+            return {
+                'available': False,
+                'reason': 'on_leave',
+                'message': f"Dr. {doctor.name} is currently on leave"
+            }
+
+        # Check schedule availability
+        has_schedule = doctor.schedules.filter(is_active=True).exists()
+
+        if not has_schedule:
+            return {
+                'available': False,
+                'reason': 'no_schedule',
+                'message': f"Dr. {doctor.name} doesn't have an active schedule"
+            }
+
+        return {
+            'available': True,
+            'reason': 'available',
+            'message': f"Dr. {doctor.name} is available"
+        }
 
     # ========== AI-Powered Helper Methods ==========
 
@@ -666,23 +914,24 @@ Name:"""
         cleaned = message.lower().strip()
         cleaned = re.sub(r'^(?:doctor|dr\.?|i want|i need|book)\s+', '', cleaned)
 
-        doctors = Doctor.objects.filter(is_available=True)
+        doctors = Doctor.objects.filter(is_active=True)
         best_match = None
         best_score = 0
 
         for doctor in doctors:
             score = 0
-            doctor_name_lower = doctor.full_name.lower()
-            first_name = doctor.first_name.lower()
-            last_name = doctor.last_name.lower()
+            doctor_name_lower = doctor.name.lower()
+            name_parts = doctor.name.lower().split()
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[-1] if len(name_parts) > 1 else ""
 
             if cleaned == doctor_name_lower:
                 score = 100
-            elif cleaned == first_name or cleaned == last_name:
+            elif cleaned == first_name or (last_name and cleaned == last_name):
                 score = 95
             elif doctor_name_lower in cleaned or cleaned in doctor_name_lower:
                 score = 90
-            elif first_name in cleaned or last_name in cleaned:
+            elif first_name in cleaned or (last_name and last_name in cleaned):
                 score = 85
             else:
                 similarity = SequenceMatcher(None, cleaned, doctor_name_lower).ratio()
@@ -1097,7 +1346,7 @@ Phone:"""
             return ", ".join(available[:-1]) + f", and {available[-1]}"
 
     def _create_appointment(self, session_data):
-        """Create appointment in database"""
+        """Create appointment in database with comprehensive details"""
         try:
             doctor = Doctor.objects.get(id=session_data['doctor_id'])
             appointment_date = datetime.fromisoformat(session_data['appointment_date']).date()
@@ -1105,14 +1354,25 @@ Phone:"""
             time_str = session_data['appointment_time']
             appointment_time = datetime.strptime(time_str, '%I:%M %p').time()
 
+            # Get symptoms and booking type
+            symptoms = session_data.get('symptoms_description', 'Not specified')
+            booking_type = session_data.get('booking_type', 'Routine Checkup')
+            urgency_level = session_data.get('urgency_level', 'routine')
+
+            # Add urgency note to symptoms if high priority
+            if urgency_level in ['emergency', 'high_priority']:
+                symptoms = f"[{urgency_level.upper()}] {symptoms}"
+
             appointment = Appointment.objects.create(
                 doctor=doctor,
                 patient_name=session_data['patient_name'],
                 patient_phone=session_data['phone'],
                 appointment_date=appointment_date,
                 appointment_time=appointment_time,
+                symptoms=symptoms,
+                notes=f"Booking Type: {booking_type}. Booked via voice assistant by Senior Booking Specialist.",
                 status='confirmed',
-                booking_method='voice_assistant'
+                session_id=self.session_id
             )
 
             # Send SMS
@@ -1120,7 +1380,7 @@ Phone:"""
                 from twilio_service import send_sms
                 send_sms(
                     to=session_data['phone'],
-                    message=f"Appointment confirmed! Dr. {doctor.full_name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
+                    message=f"Appointment confirmed! Dr. {doctor.name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
                 )
             except Exception as e:
                 print(f"SMS sending failed: {e}")
