@@ -170,11 +170,11 @@ class VoiceAssistantManager:
 
             if doctor:
                 session_data['doctor_id'] = doctor.id
-                session_data['doctor_name'] = doctor.full_name
+                session_data['doctor_name'] = doctor.name
                 session_data['stage'] = 'date_selection'
 
                 return {
-                    'message': f"Excellent! I found Dr. {doctor.full_name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
+                    'message': f"Excellent! I found Dr. {doctor.name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -248,19 +248,19 @@ class VoiceAssistantManager:
             suggested_doctor = doctors.first()
 
             session_data['suggested_doctors'] = [
-                {'id': doc.id, 'name': doc.full_name, 'fee': doc.consultation_fee}
+                {'id': doc.id, 'name': doc.name, 'fee': doc.consultation_fee}
                 for doc in doctors[:3]
             ]
             session_data['suggested_specialization'] = specialization.name
 
             # Generate intelligent response
             if doctors.count() == 1:
-                message_text = f"Based on your symptoms - {reasoning} - I recommend Dr. {suggested_doctor.full_name}, our {specialization.name}. The consultation fee is {suggested_doctor.consultation_fee} rupees. Would you like to book an appointment with Dr. {suggested_doctor.full_name}? Just say 'yes' or 'book it'."
+                message_text = f"Based on your symptoms - {reasoning} - I recommend Dr. {suggested_doctor.name}, our {specialization.name}. The consultation fee is {suggested_doctor.consultation_fee} rupees. Would you like to book an appointment with Dr. {suggested_doctor.name}? Just say 'yes' or 'book it'."
             else:
-                other_doctors = [f"Dr. {doc.full_name} for {doc.consultation_fee} rupees" for doc in doctors[1:3]]
+                other_doctors = [f"Dr. {doc.name} for {doc.consultation_fee} rupees" for doc in doctors[1:3]]
                 other_doctors_text = ", or ".join(other_doctors) if other_doctors else ""
 
-                message_text = f"Based on your symptoms, I recommend seeing a {specialization.name}. I suggest Dr. {suggested_doctor.full_name} who charges {suggested_doctor.consultation_fee} rupees. "
+                message_text = f"Based on your symptoms, I recommend seeing a {specialization.name}. I suggest Dr. {suggested_doctor.name} who charges {suggested_doctor.consultation_fee} rupees. "
                 if other_doctors_text:
                     message_text += f"We also have {other_doctors_text}. "
                 message_text += f"Which doctor would you like to book with? You can say the doctor's name."
@@ -331,7 +331,7 @@ class VoiceAssistantManager:
             confirmed_doctor = self._confirm_suggested_doctor(message, session_data)
             if confirmed_doctor:
                 session_data['doctor_id'] = confirmed_doctor.id
-                session_data['doctor_name'] = confirmed_doctor.full_name
+                session_data['doctor_name'] = confirmed_doctor.name
                 doctor_id = confirmed_doctor.id
             else:
                 return {
@@ -483,7 +483,7 @@ class VoiceAssistantManager:
         # Format phone number for speaking (e.g., "98765 43210")
         phone_formatted = f"{phone[:5]} {phone[5:]}"
 
-        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.full_name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
+        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
 
         return {
             'message': summary,
@@ -519,7 +519,7 @@ class VoiceAssistantManager:
                     date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
 
                     return {
-                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.full_name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
+                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
                         'stage': 'completed',
                         'data': session_data,
                         'action': 'booking_complete'
@@ -672,9 +672,12 @@ Name:"""
 
         for doctor in doctors:
             score = 0
-            doctor_name_lower = doctor.full_name.lower()
-            first_name = doctor.first_name.lower()
-            last_name = doctor.last_name.lower()
+            doctor_name_lower = doctor.name.lower()
+
+            # Parse name into parts for flexible matching
+            name_parts = doctor.name.split()
+            first_name = name_parts[0].lower() if name_parts else ""
+            last_name = name_parts[-1].lower() if len(name_parts) > 1 else ""
 
             if cleaned == doctor_name_lower:
                 score = 100
@@ -1120,7 +1123,7 @@ Phone:"""
                 from twilio_service import send_sms
                 send_sms(
                     to=session_data['phone'],
-                    message=f"Appointment confirmed! Dr. {doctor.full_name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
+                    message=f"Appointment confirmed! Dr. {doctor.name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
                 )
             except Exception as e:
                 print(f"SMS sending failed: {e}")
