@@ -8,6 +8,7 @@ import uuid
 import base64
 from chatbot.conversation_manager import ConversationManager
 from chatbot.voice_service import voice_service
+from chatbot.voice_assistant_manager import VoiceAssistantManager
 
 
 def chatbot_page(request):
@@ -144,3 +145,76 @@ class VoiceAPIView(View):
 def home(request):
     """Home page"""
     return render(request, 'patient_booking/home.html')
+
+
+def voice_assistant_page(request):
+    """Render the voice assistant interface"""
+    return render(request, 'patient_booking/voice_assistant.html')
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class VoiceAssistantAPIView(View):
+    """
+    API endpoint for voice assistant conversation
+    Pure voice-based booking flow without UI elements
+    """
+
+    # Store sessions in memory (in production, use Django cache or Redis)
+    sessions = {}
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+            message = data.get('message', '')
+            session_id = data.get('session_id')
+            session_data = data.get('session_data', {})
+
+            # Generate session ID if not provided
+            if not session_id:
+                session_id = str(uuid.uuid4())
+
+            # Get or create session data
+            if session_id not in self.sessions:
+                self.sessions[session_id] = {
+                    'stage': 'greeting',
+                    'data': {}
+                }
+
+            # Update session with provided data
+            if session_data:
+                self.sessions[session_id].update(session_data)
+
+            # Process message through voice assistant manager
+            manager = VoiceAssistantManager(session_id)
+            response = manager.process_voice_message(message, self.sessions[session_id])
+
+            # Update session
+            self.sessions[session_id] = response['data']
+
+            return JsonResponse({
+                'success': True,
+                'session_id': session_id,
+                'message': response['message'],
+                'stage': response['stage'],
+                'action': response['action'],
+                'data': response['data']
+            })
+
+        except Exception as e:
+            import traceback
+            print(f"Voice assistant error: {e}")
+            print(traceback.format_exc())
+
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+                'message': 'Sorry, I encountered an error. Could you please repeat that?'
+            }, status=500)
+
+    def get(self, request):
+        """Return API info"""
+        return JsonResponse({
+            'message': 'Voice Assistant API - Use POST method to interact',
+            'endpoint': '/api/voice-assistant/',
+            'required_fields': ['message', 'session_id (optional)', 'session_data (optional)']
+        })

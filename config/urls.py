@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('patient_booking.urls')),
+    path('voicebot/', include('voicebot.urls')),
     path('admin-panel/', include('admin_panel.urls')),
     path('whatsapp/', include('whatsapp_integration.urls')),
 ]
