@@ -821,41 +821,80 @@ Name:"""
         return None
 
     def _parse_date_with_ai(self, message):
-        """Parse date using AI + existing parser"""
+        """Parse date using AI with comprehensive natural language understanding"""
         # First try the existing parser
         parsed = self.date_parser.parse_date(message)
         if parsed:
+            print(f"Date parsed by DateParser: {parsed}")
             return parsed
 
-        # If that fails, use AI
+        # If that fails, use Gemini AI with enhanced prompt
         try:
             model = genai.GenerativeModel(self.gemini_model)
             today = timezone.now().date()
-            prompt = f"""Today's date is {today.strftime('%Y-%m-%d')} ({today.strftime('%A, %B %d, %Y')}).
+            current_weekday = today.strftime('%A')
 
-Extract the date from this message: "{message}"
+            prompt = f"""You are a date parser for a medical appointment booking system.
 
-Return the date in YYYY-MM-DD format ONLY. If no valid date found, return "NOT_FOUND".
+Today's date: {today.strftime('%Y-%m-%d')} ({today.strftime('%A, %B %d, %Y')})
+Current day of week: {current_weekday}
 
-Examples:
+Patient said: "{message}"
+
+Extract the appointment date from what the patient said and return it in YYYY-MM-DD format ONLY.
+
+IMPORTANT RULES:
+1. If patient says a day of the week (Monday, Tuesday, etc.), find the NEXT occurrence of that day
+2. "Wednesday" means the next Wednesday from today
+3. "coming Wednesday" or "this Wednesday" means the next Wednesday
+4. "next Wednesday" means the Wednesday after the coming Wednesday (7 days later if today is not Wednesday, or 14 days if it is)
+5. "tomorrow" means {(today + timedelta(days=1)).strftime('%Y-%m-%d')}
+6. "day after tomorrow" means {(today + timedelta(days=2)).strftime('%Y-%m-%d')}
+7. For month+day like "December 15", use the upcoming occurrence (this year if not passed, else next year)
+8. For just a number like "15th", assume the current or next month
+
+EXAMPLES:
 - "tomorrow" → {(today + timedelta(days=1)).strftime('%Y-%m-%d')}
-- "next monday" → (calculate next Monday from today)
-- "december 15" → 2025-12-15 (or 2024-12-15 if before today's date, use 2025)
-- "15th" → (assume current month/next month)
+- "Wednesday" → (calculate next Wednesday from {today})
+- "coming Wednesday" → (calculate next Wednesday from {today})
+- "this Wednesday" → (calculate next Wednesday from {today})
+- "next Wednesday" → (calculate Wednesday after next from {today})
+- "next Monday" → (calculate next Monday from {today})
+- "December 15" → 2025-12-15 (if not passed) or 2026-12-15
+- "15th" → (assume current or next month)
+- "day after tomorrow" → {(today + timedelta(days=2)).strftime('%Y-%m-%d')}
+
+RESPONSE FORMAT:
+- Return ONLY the date in YYYY-MM-DD format
+- If unclear or no date mentioned, return "NOT_FOUND"
+- Do NOT include any explanation, just the date
 
 Date:"""
 
+            print(f"Sending to Gemini AI for date parsing: {message}")
             response = model.generate_content(prompt)
             result = response.text.strip()
+            print(f"Gemini AI date parsing result: {result}")
 
-            if result == "NOT_FOUND":
+            if result == "NOT_FOUND" or not result:
+                print("Gemini could not parse date")
                 return None
 
+            # Clean up the result (remove any extra text)
+            # Extract YYYY-MM-DD pattern
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', result)
+            if date_match:
+                result = date_match.group(1)
+
             # Parse YYYY-MM-DD format
-            return datetime.strptime(result, '%Y-%m-%d').date()
+            parsed_date = datetime.strptime(result, '%Y-%m-%d').date()
+            print(f"Successfully parsed date: {parsed_date}")
+            return parsed_date
 
         except Exception as e:
             print(f"AI date parsing error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _extract_time_with_ai(self, message):
