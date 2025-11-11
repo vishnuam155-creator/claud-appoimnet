@@ -1,6 +1,9 @@
 """
 Voice Assistant Manager - AI-Powered Natural Conversational Flow
 Enhanced with Gemini AI for superior accuracy and intelligence
+
+This module handles the conversational flow for voice-based appointment booking,
+following comprehensive personality and tone guidelines for natural, empathetic interactions.
 """
 
 import json
@@ -16,6 +19,12 @@ from doctors.models import Doctor, DoctorSchedule, Specialization
 from appointments.models import Appointment
 from chatbot.claude_service import ClaudeService
 from chatbot.date_parser import DateParser
+from .voicebot_config import (
+    CLINIC_NAME, PERSONALITY_GUIDELINES, VOICE_GUIDELINES,
+    STAGE_PROMPTS, SPECIAL_SITUATIONS, INTENT_RESPONSES,
+    AI_EXTRACTION_PROMPTS, get_greeting, format_phone_for_voice,
+    get_confirmation_summary, get_booking_success_message
+)
 
 
 class VoiceAssistantManager:
@@ -93,7 +102,7 @@ class VoiceAssistantManager:
         return self.claude_service.detect_intent(message, stage, session_data)
 
     def _handle_greeting(self, message, session_data):
-        """Initial greeting with AI intelligence"""
+        """Initial greeting with AI intelligence - warm and welcoming"""
 
         # Check if user already provided their name using AI
         if message and len(message.strip()) > 2:
@@ -102,28 +111,38 @@ class VoiceAssistantManager:
                 session_data['patient_name'] = name_extracted
                 session_data['stage'] = 'doctor_selection'
 
+                greeting_msg = STAGE_PROMPTS['greeting']['with_name'].format(
+                    name=name_extracted,
+                    assistant_name=self.ASSISTANT_NAME,
+                    clinic_name=CLINIC_NAME
+                )
+
                 return {
-                    'message': f"Hello {name_extracted}! It's wonderful to meet you. I'm {self.ASSISTANT_NAME}, your intelligent voice assistant. I'm here to help you book a medical appointment smoothly. Could you tell me which doctor you'd like to see, or describe what symptoms you're experiencing? I'll help you find the right doctor.",
+                    'message': greeting_msg,
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
                 }
 
-        # Standard greeting
+        # Standard greeting - use configured prompt
         session_data['stage'] = 'patient_name'
+        greeting_msg = STAGE_PROMPTS['greeting']['initial'].format(
+            clinic_name=CLINIC_NAME
+        )
+
         return {
-            'message': f"Hello! I'm {self.ASSISTANT_NAME}, your AI-powered medical assistant. I'm here to help you book an appointment quickly and easily. May I know your name please?",
+            'message': greeting_msg,
             'stage': 'patient_name',
             'data': session_data,
             'action': 'continue'
         }
 
     def _handle_patient_name_ai(self, message, session_data):
-        """Collect patient name using AI extraction"""
+        """Collect patient name using AI extraction - warm and patient"""
 
         if not message or len(message.strip()) < 2:
             return {
-                'message': "I didn't quite catch that. Could you please tell me your name again?",
+                'message': STAGE_PROMPTS['patient_name']['retry'],
                 'stage': 'patient_name',
                 'data': session_data,
                 'action': 'continue'
@@ -134,7 +153,7 @@ class VoiceAssistantManager:
 
         if not patient_name:
             return {
-                'message': "I'm sorry, I couldn't understand the name. Could you please say your name clearly?",
+                'message': STAGE_PROMPTS['patient_name']['unclear'],
                 'stage': 'patient_name',
                 'data': session_data,
                 'action': 'continue'
@@ -143,19 +162,23 @@ class VoiceAssistantManager:
         session_data['patient_name'] = patient_name
         session_data['stage'] = 'doctor_selection'
 
+        # Personalized success message
+        success_msg = STAGE_PROMPTS['patient_name']['success'].format(name=patient_name)
+        ask_msg = STAGE_PROMPTS['doctor_selection']['ask']
+
         return {
-            'message': f"Wonderful to meet you, {patient_name}! Now, I can help you find the right doctor. You can either tell me a specific doctor's name you'd like to see, or describe your symptoms and I'll recommend the best specialist for you. What would you prefer?",
+            'message': f"{success_msg} {ask_msg}",
             'stage': 'doctor_selection',
             'data': session_data,
             'action': 'continue'
         }
 
     def _handle_doctor_selection_ai(self, message, session_data):
-        """Handle doctor selection with AI - name or symptoms"""
+        """Handle doctor selection with AI - name or symptoms - empathetic and helpful"""
 
         if not message:
             return {
-                'message': "I didn't hear anything. Could you please tell me which doctor you'd like to see, or describe your symptoms?",
+                'message': STAGE_PROMPTS['doctor_selection']['retry'],
                 'stage': 'doctor_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -173,15 +196,21 @@ class VoiceAssistantManager:
                 session_data['doctor_name'] = doctor.full_name
                 session_data['stage'] = 'date_selection'
 
+                doctor_found_msg = STAGE_PROMPTS['doctor_selection']['doctor_found'].format(
+                    doctor_name=doctor.full_name,
+                    specialization=doctor.specialization.name,
+                    fee=doctor.consultation_fee
+                )
+
                 return {
-                    'message': f"Excellent! I found Dr. {doctor.full_name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
+                    'message': doctor_found_msg,
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
                 }
             else:
                 return {
-                    'message': "I couldn't find a doctor with that name. Could you try saying the doctor's name again, or would you like to describe your symptoms so I can recommend a suitable doctor?",
+                    'message': STAGE_PROMPTS['doctor_selection']['doctor_not_found'],
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -202,7 +231,7 @@ class VoiceAssistantManager:
 
             if not specialization_name:
                 return {
-                    'message': "I understand you're not feeling well. However, I couldn't quite determine the right specialization from what you described. Could you provide more details about your symptoms? For example, you might say 'I have a high fever and body ache' or 'I'm experiencing chest pain'.",
+                    'message': STAGE_PROMPTS['doctor_selection']['symptoms_unclear'],
                     'stage': 'doctor_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -282,11 +311,11 @@ class VoiceAssistantManager:
             }
 
     def _handle_date_selection_ai(self, message, session_data):
-        """Handle date selection with AI parsing"""
+        """Handle date selection with AI parsing - flexible and understanding"""
 
         if not message:
             return {
-                'message': "I didn't catch the date. Could you tell me when you'd like to book? You can say 'tomorrow', 'next Monday', or mention a specific date.",
+                'message': STAGE_PROMPTS['date_selection']['retry'],
                 'stage': 'date_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -297,7 +326,7 @@ class VoiceAssistantManager:
 
         if not parsed_date:
             return {
-                'message': "I couldn't understand that date. Could you try saying it differently? For example, 'tomorrow', 'December 15th', or 'next Friday'.",
+                'message': STAGE_PROMPTS['date_selection']['unclear'],
                 'stage': 'date_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -308,7 +337,7 @@ class VoiceAssistantManager:
 
         if parsed_date < today:
             return {
-                'message': "That date has already passed. Please choose a date from today onwards. What date would you like?",
+                'message': STAGE_PROMPTS['date_selection']['date_passed'],
                 'stage': 'date_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -316,7 +345,7 @@ class VoiceAssistantManager:
 
         if parsed_date > today + timedelta(days=90):
             return {
-                'message': "We can only book appointments up to 90 days in advance. Please choose an earlier date.",
+                'message': STAGE_PROMPTS['date_selection']['too_far'],
                 'stage': 'date_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -378,11 +407,11 @@ class VoiceAssistantManager:
         }
 
     def _handle_time_selection_ai(self, message, session_data):
-        """Handle time slot selection with AI"""
+        """Handle time slot selection with AI - clear and helpful"""
 
         if not message:
             return {
-                'message': "I didn't catch the time. What time would you prefer? You can say something like '10 AM' or '2:30 PM'.",
+                'message': STAGE_PROMPTS['time_selection']['retry'],
                 'stage': 'time_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -393,7 +422,7 @@ class VoiceAssistantManager:
 
         if not selected_time:
             return {
-                'message': "I couldn't understand that time. Could you say it again? For example, 'ten AM' or 'two thirty PM'.",
+                'message': STAGE_PROMPTS['time_selection']['unclear'],
                 'stage': 'time_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -443,11 +472,11 @@ class VoiceAssistantManager:
         }
 
     def _handle_phone_collection_ai(self, message, session_data):
-        """Collect phone number with AI extraction"""
+        """Collect phone number with AI extraction - clear and reassuring"""
 
         if not message:
             return {
-                'message': "I didn't catch your phone number. Could you say your 10-digit mobile number again?",
+                'message': STAGE_PROMPTS['phone_collection']['retry'],
                 'stage': 'phone_collection',
                 'data': session_data,
                 'action': 'continue'
@@ -458,7 +487,7 @@ class VoiceAssistantManager:
 
         if not phone:
             return {
-                'message': "I couldn't understand that phone number. Please say your 10-digit mobile number clearly, digit by digit if needed.",
+                'message': STAGE_PROMPTS['phone_collection']['unclear'],
                 'stage': 'phone_collection',
                 'data': session_data,
                 'action': 'continue'
@@ -467,7 +496,7 @@ class VoiceAssistantManager:
         # Validate phone
         if len(phone) != 10 or not phone.isdigit():
             return {
-                'message': "That doesn't seem like a valid 10-digit phone number. Could you say it again? Make sure it's a 10-digit number.",
+                'message': STAGE_PROMPTS['phone_collection']['invalid'],
                 'stage': 'phone_collection',
                 'data': session_data,
                 'action': 'continue'
@@ -476,14 +505,19 @@ class VoiceAssistantManager:
         session_data['phone'] = phone
         session_data['stage'] = 'confirmation'
 
-        # Prepare summary
+        # Prepare summary using configuration
         doctor = Doctor.objects.get(id=session_data['doctor_id'])
         date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
 
-        # Format phone number for speaking (e.g., "98765 43210")
-        phone_formatted = f"{phone[:5]} {phone[5:]}"
-
-        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.full_name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
+        # Use configured helper function
+        summary = get_confirmation_summary(
+            session_data=session_data,
+            doctor_name=doctor.full_name,
+            specialization=doctor.specialization.name,
+            date_str=date_str,
+            time=session_data['appointment_time'],
+            phone=phone
+        )
 
         return {
             'message': summary,
@@ -493,11 +527,11 @@ class VoiceAssistantManager:
         }
 
     def _handle_confirmation_ai(self, message, session_data):
-        """Handle final confirmation with AI intent detection"""
+        """Handle final confirmation with AI intent detection - warm and professional"""
 
         if not message:
             return {
-                'message': "I didn't hear you. Please say 'yes' to confirm the booking or tell me what you'd like to change.",
+                'message': STAGE_PROMPTS['confirmation']['retry'],
                 'stage': 'confirmation',
                 'data': session_data,
                 'action': 'continue'
@@ -518,15 +552,26 @@ class VoiceAssistantManager:
                     doctor = Doctor.objects.get(id=session_data['doctor_id'])
                     date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
 
+                    # Use configured success message
+                    success_msg = get_booking_success_message(
+                        appointment_id=appointment.id,
+                        patient_name=session_data.get('patient_name', 'there'),
+                        doctor_name=doctor.full_name,
+                        date_str=date_str,
+                        time=session_data['appointment_time'],
+                        phone=session_data['phone'],
+                        clinic_name=CLINIC_NAME
+                    )
+
                     return {
-                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.full_name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
+                        'message': success_msg,
                         'stage': 'completed',
                         'data': session_data,
                         'action': 'booking_complete'
                     }
                 else:
                     return {
-                        'message': "I'm sorry, there was an error creating your appointment. This might be a technical issue. Could you please try again, or would you like to contact our support team?",
+                        'message': STAGE_PROMPTS['confirmation']['booking_error'],
                         'stage': 'confirmation',
                         'data': session_data,
                         'action': 'error'
@@ -535,7 +580,7 @@ class VoiceAssistantManager:
             except Exception as e:
                 print(f"Error creating appointment: {e}")
                 return {
-                    'message': "I apologize, but something went wrong while booking your appointment. The issue has been logged. Would you like to try again?",
+                    'message': STAGE_PROMPTS['confirmation']['booking_error'],
                     'stage': 'confirmation',
                     'data': session_data,
                     'action': 'error'
@@ -543,7 +588,7 @@ class VoiceAssistantManager:
 
         elif intent == 'change':
             return {
-                'message': "No problem! What would you like to change? You can say 'change doctor', 'change date', 'change time', 'change phone number', or 'change name'.",
+                'message': STAGE_PROMPTS['confirmation']['ask_what_to_change'],
                 'stage': 'confirmation',
                 'data': session_data,
                 'action': 'continue'
@@ -551,7 +596,7 @@ class VoiceAssistantManager:
 
         else:
             return {
-                'message': "I didn't quite understand. Could you please say 'yes' to confirm the booking, or tell me specifically what you'd like to change?",
+                'message': STAGE_PROMPTS['confirmation']['unclear'],
                 'stage': 'confirmation',
                 'data': session_data,
                 'action': 'continue'
@@ -898,10 +943,10 @@ Phone:"""
     # ========== Intent Handlers ==========
 
     def _handle_cancellation(self, session_data):
-        """Handle booking cancellation"""
+        """Handle booking cancellation - understanding and professional"""
         session_data['stage'] = 'completed'
         return {
-            'message': "I understand. Your booking has been cancelled. If you'd like to book an appointment later, just come back anytime. Is there anything else I can help you with?",
+            'message': INTENT_RESPONSES['cancel'],
             'stage': 'completed',
             'data': session_data,
             'action': 'cancelled'
@@ -956,7 +1001,7 @@ Phone:"""
             }
 
     def _handle_change_request(self, intent, session_data):
-        """Handle requests to change doctor/date/time"""
+        """Handle requests to change doctor/date/time - flexible and helpful"""
         change_type = intent.get('intent')
 
         if change_type == 'change_doctor':
@@ -964,7 +1009,7 @@ Phone:"""
             session_data.pop('doctor_id', None)
             session_data.pop('doctor_name', None)
             return {
-                'message': "No problem! Which doctor would you like to book with instead? You can tell me their name or describe your symptoms.",
+                'message': INTENT_RESPONSES['change_doctor'],
                 'stage': 'doctor_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -973,7 +1018,7 @@ Phone:"""
             session_data['stage'] = 'date_selection'
             session_data.pop('appointment_date', None)
             return {
-                'message': "Sure! What date would you prefer for your appointment?",
+                'message': INTENT_RESPONSES['change_date'],
                 'stage': 'date_selection',
                 'data': session_data,
                 'action': 'continue'
@@ -989,15 +1034,17 @@ Phone:"""
             session_data['available_slots'] = available_slots
 
             time_options = self._format_time_slots_for_voice(available_slots)
+            change_time_msg = INTENT_RESPONSES['change_time'].format(time_slots=time_options)
+
             return {
-                'message': f"Of course! Here are the available times: {time_options}. Which time works better for you?",
+                'message': change_time_msg,
                 'stage': 'time_selection',
                 'data': session_data,
                 'action': 'continue'
             }
 
         return {
-            'message': "What would you like to change?",
+            'message': STAGE_PROMPTS['confirmation']['ask_what_to_change'],
             'stage': session_data.get('stage', 'confirmation'),
             'data': session_data,
             'action': 'continue'
