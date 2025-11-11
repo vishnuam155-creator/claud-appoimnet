@@ -233,7 +233,7 @@ class VoiceAssistantManager:
             # Get available doctors for this specialization
             doctors = Doctor.objects.filter(
                 specialization=specialization,
-                is_available=True
+                is_active=True
             ).order_by('consultation_fee')
 
             if not doctors.exists():
@@ -666,7 +666,7 @@ Name:"""
         cleaned = message.lower().strip()
         cleaned = re.sub(r'^(?:doctor|dr\.?|i want|i need|book)\s+', '', cleaned)
 
-        doctors = Doctor.objects.filter(is_available=True)
+        doctors = Doctor.objects.filter(is_active=True)
         best_match = None
         best_score = 0
 
