@@ -66,9 +66,64 @@ class VoiceAssistantManager:
             'routine': ['checkup', 'routine', 'regular', 'follow up', 'follow-up', 'general']
         }
 
+        # Comprehensive symptom-to-specialization mapping for robust fallback
+        self.symptom_specialization_map = {
+            # Orthopedic keywords
+            'orthopedic': ['bone', 'fracture', 'joint', 'leg pain', 'leg', 'ankle', 'knee', 'hip', 'back pain',
+                          'spine', 'shoulder', 'elbow', 'wrist', 'foot', 'arthritis', 'sprain', 'muscle pain'],
+            # Cardiology keywords
+            'cardiology': ['heart', 'chest pain', 'chest', 'cardiac', 'palpitation', 'heart attack',
+                          'blood pressure', 'hypertension', 'breathing difficulty'],
+            # General Physician keywords
+            'general physician': ['fever', 'cold', 'cough', 'flu', 'headache', 'body ache', 'weakness',
+                                 'fatigue', 'general', 'checkup', 'tired'],
+            # Dermatology keywords
+            'dermatology': ['skin', 'rash', 'acne', 'allergy', 'itch', 'dermat', 'hair', 'scalp'],
+            # ENT keywords
+            'ent': ['ear', 'nose', 'throat', 'tonsil', 'hearing', 'sinus', 'voice'],
+            # Pediatrics keywords
+            'pediatrics': ['child', 'baby', 'infant', 'kid', 'pediatric', 'vaccination'],
+            # Gynecology keywords
+            'gynecology': ['pregnancy', 'period', 'menstrual', 'gynec', 'women', 'obstetric'],
+            # Neurology keywords
+            'neurology': ['brain', 'neurolog', 'migraine', 'seizure', 'paralysis', 'nerve', 'numbness'],
+            # Gastroenterology keywords
+            'gastroenterology': ['stomach', 'abdomen', 'digestion', 'gastric', 'liver', 'intestine'],
+            # Ophthalmology keywords
+            'ophthalmology': ['eye', 'vision', 'sight', 'ophthal', 'blind'],
+            # Dentistry keywords
+            'dentistry': ['tooth', 'teeth', 'dental', 'gum', 'mouth', 'cavity'],
+        }
+
+    def _normalize_voice_input(self, message):
+        """
+        Normalize voice input to handle common transcription issues
+        """
+        if not message:
+            return message
+
+        # Common voice transcription fixes
+        message = message.strip()
+
+        # Handle common transcription patterns
+        replacements = {
+            'yeah yeah': 'yes',
+            'ok ok': 'okay',
+            'uh ': '',
+            'um ': '',
+            'ah ': '',
+        }
+
+        message_lower = message.lower()
+        for pattern, replacement in replacements.items():
+            message_lower = message_lower.replace(pattern, replacement)
+
+        return message_lower.strip()
+
     def process_voice_message(self, message, session_data):
         """
         Process voice input with AI intelligence
+        Handles voice transcription normalization and robust understanding
 
         Args:
             message: User's voice input (transcribed text)
@@ -77,6 +132,11 @@ class VoiceAssistantManager:
         Returns:
             dict: Response with message, stage, data, action
         """
+        # Normalize voice input
+        if message:
+            message = self._normalize_voice_input(message)
+            print(f"[VOICEBOT] Normalized input: '{message}'")
+
         current_stage = session_data.get('stage', 'greeting')
 
         # Detect user intent using Gemini AI
@@ -279,121 +339,162 @@ class VoiceAssistantManager:
             )
 
     def _analyze_symptoms_and_suggest_ai(self, message, session_data):
-        """Analyze symptoms using Gemini AI and suggest doctor"""
+        """
+        Analyze symptoms using multiple methods for robust understanding
+        1. AI Analysis with Gemini
+        2. Keyword matching from comprehensive symptom map
+        3. Database keyword matching
+        """
+        message_lower = message.lower()
+
+        # Method 1: Try AI analysis first
+        specialization_name = None
+        confidence = 'low'
+        reasoning = ''
 
         try:
-            # Use Gemini to analyze symptoms
+            print(f"[VOICEBOT] Analyzing symptoms with AI: {message}")
             analysis = self.claude_service.analyze_symptoms(message)
             specialization_name = analysis.get('specialization', '').lower()
             confidence = analysis.get('confidence', 'low')
             reasoning = analysis.get('reasoning', '')
+            print(f"[VOICEBOT] AI Analysis result: {specialization_name}, confidence: {confidence}")
+        except Exception as e:
+            print(f"[VOICEBOT] AI analysis failed: {e}")
+            specialization_name = None
 
-            if not specialization_name:
-                return {
-                    'message': "I understand you're not feeling well. However, I couldn't quite determine the right specialization from what you described. Could you provide more details about your symptoms? For example, you might say 'I have a high fever and body ache' or 'I'm experiencing chest pain'.",
-                    'stage': 'doctor_selection',
-                    'data': session_data,
-                    'action': 'continue'
-                }
+        # Method 2: Keyword matching from symptom map (robust fallback)
+        if not specialization_name or confidence == 'low':
+            print(f"[VOICEBOT] Using keyword matching for: {message_lower}")
+            matched_specs = []
+            for spec_name, keywords in self.symptom_specialization_map.items():
+                match_count = sum(1 for keyword in keywords if keyword.lower() in message_lower)
+                if match_count > 0:
+                    matched_specs.append((spec_name, match_count))
 
-            # Find matching specialization
-            specialization = Specialization.objects.filter(
-                name__icontains=specialization_name
-            ).first()
+            if matched_specs:
+                # Sort by match count and get the best match
+                matched_specs.sort(key=lambda x: x[1], reverse=True)
+                specialization_name = matched_specs[0][0]
+                confidence = 'high' if matched_specs[0][1] > 1 else 'medium'
+                reasoning = f"Matched {matched_specs[0][1]} keywords from your symptoms"
+                print(f"[VOICEBOT] Keyword match found: {specialization_name} (matches: {matched_specs[0][1]})")
 
-            if not specialization:
-                # Try keyword match
-                all_specs = Specialization.objects.all()
-                for spec in all_specs:
-                    keywords = spec.keywords.lower() if spec.keywords else ""
-                    if any(keyword in message.lower() for keyword in keywords.split(',')):
+        # If still no match, default to General Physician
+        if not specialization_name:
+            specialization_name = 'general physician'
+            confidence = 'medium'
+            reasoning = "I'll recommend a general physician who can assess your condition"
+            print(f"[VOICEBOT] Using default: General Physician")
+
+        # Find matching specialization in database
+        specialization = Specialization.objects.filter(
+            name__icontains=specialization_name
+        ).first()
+
+        # Method 3: Try alternate names and database keyword matching
+        if not specialization:
+            print(f"[VOICEBOT] Exact match not found, trying alternates...")
+            # Try partial matches
+            all_specs = Specialization.objects.all()
+            for spec in all_specs:
+                spec_name_lower = spec.name.lower()
+                # Check if any word from specialization_name is in spec.name
+                spec_words = specialization_name.split()
+                if any(word in spec_name_lower for word in spec_words):
+                    specialization = spec
+                    print(f"[VOICEBOT] Found partial match: {spec.name}")
+                    break
+
+                # Check database keywords
+                if spec.keywords:
+                    keywords = spec.keywords.lower()
+                    if any(keyword.strip() in message_lower for keyword in keywords.split(',')):
                         specialization = spec
+                        print(f"[VOICEBOT] Found via database keywords: {spec.name}")
                         break
 
-            if not specialization:
-                return {
-                    'message': f"Based on your symptoms, I think you might need a {specialization_name}, but I don't have that specialization available right now. Could you tell me what type of doctor you're looking for? For example, 'general physician', 'cardiologist', or 'dermatologist'?",
-                    'stage': 'doctor_selection',
-                    'data': session_data,
-                    'action': 'continue'
-                }
+        if not specialization:
+            print(f"[VOICEBOT] No specialization found in database")
+            return {
+                'message': f"I understand you're experiencing {message}. While I think you might need a {specialization_name}, I don't have that exact specialization available. Let me suggest our General Physician who can evaluate your condition. Alternatively, you can tell me which type of doctor you'd prefer - for example, 'orthopedic', 'cardiologist', or 'dermatologist'?",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
 
-            # Get available doctors for this specialization
-            # Senior specialist logic: prioritize by experience for urgent cases
-            urgency_level = session_data.get('urgency_level', 'routine')
+        print(f"[VOICEBOT] Found specialization: {specialization.name}")
 
+        # Get available doctors for this specialization
+        # Senior specialist logic: prioritize by experience for urgent cases
+        urgency_level = session_data.get('urgency_level', 'routine')
+
+        if urgency_level in ['emergency', 'high_priority']:
+            # Prioritize by experience for urgent cases
+            doctors = Doctor.objects.filter(
+                specialization=specialization,
+                is_active=True
+            ).order_by('-experience_years', 'consultation_fee')
+        else:
+            # Balance between experience and cost for routine cases
+            doctors = Doctor.objects.filter(
+                specialization=specialization,
+                is_active=True
+            ).order_by('consultation_fee', '-experience_years')
+
+        if not doctors.exists():
+            print(f"[VOICEBOT] No doctors found for {specialization.name}")
+            return {
+                'message': f"I'm sorry, we don't have any {specialization.name} doctors available at the moment. Would you like to try booking with a different type of doctor?",
+                'stage': 'doctor_selection',
+                'data': session_data,
+                'action': 'continue'
+            }
+
+        # Suggest doctor(s) with comprehensive AI-generated response
+        suggested_doctor = doctors.first()
+        print(f"[VOICEBOT] Suggesting doctor: {suggested_doctor.name}")
+
+        session_data['suggested_doctors'] = [
+            {'id': doc.id, 'name': doc.name, 'fee': str(doc.consultation_fee), 'experience': doc.experience_years}
+            for doc in doctors[:3]
+        ]
+        session_data['suggested_specialization'] = specialization.name
+
+        # Get comprehensive details about suggested doctor
+        doctor_details = self._get_comprehensive_doctor_details(suggested_doctor)
+
+        # Generate intelligent response as senior specialist
+        if doctors.count() == 1:
+            message_text = f"After carefully analyzing your symptoms - {reasoning} - I strongly recommend Dr. {suggested_doctor.name}. {doctor_details} Dr. {suggested_doctor.name} is our specialist in {specialization.name} and is well-suited for your case. Would you like to proceed with booking an appointment with Dr. {suggested_doctor.name}? Just say 'yes' to continue."
+        else:
+            # Provide detailed comparison
+            urgency_note = ""
             if urgency_level in ['emergency', 'high_priority']:
-                # Prioritize by experience for urgent cases
-                doctors = Doctor.objects.filter(
-                    specialization=specialization,
-                    is_active=True
-                ).order_by('-experience_years', 'consultation_fee')
-            else:
-                # Balance between experience and cost for routine cases
-                doctors = Doctor.objects.filter(
-                    specialization=specialization,
-                    is_active=True
-                ).order_by('consultation_fee', '-experience_years')
+                urgency_note = f"Given the urgency of your situation, I've prioritized our most experienced doctors. "
 
-            if not doctors.exists():
-                return {
-                    'message': f"I'm sorry, we don't have any {specialization.name} doctors available at the moment. Would you like to try booking with a different type of doctor?",
-                    'stage': 'doctor_selection',
-                    'data': session_data,
-                    'action': 'continue'
-                }
+            message_text = f"Based on my thorough analysis of your symptoms, I recommend seeing a {specialization.name}. {urgency_note}"
+            message_text += f"I particularly recommend Dr. {suggested_doctor.name}. {doctor_details} "
 
-            # Suggest doctor(s) with comprehensive AI-generated response
-            suggested_doctor = doctors.first()
+            if doctors.count() > 1:
+                other_doctors_list = []
+                for doc in doctors[1:3]:
+                    other_doctors_list.append(
+                        f"Dr. {doc.name} ({doc.experience_years} years experience, {doc.consultation_fee} rupees)"
+                    )
 
-            session_data['suggested_doctors'] = [
-                {'id': doc.id, 'name': doc.name, 'fee': str(doc.consultation_fee), 'experience': doc.experience_years}
-                for doc in doctors[:3]
-            ]
-            session_data['suggested_specialization'] = specialization.name
+                if other_doctors_list:
+                    message_text += f"We also have excellent alternatives: {', or '.join(other_doctors_list)}. "
 
-            # Get comprehensive details about suggested doctor
-            doctor_details = self._get_comprehensive_doctor_details(suggested_doctor)
+            message_text += f"Which doctor would you like me to book for you? You can say the doctor's name."
 
-            # Generate intelligent response as senior specialist
-            if doctors.count() == 1:
-                message_text = f"After carefully analyzing your symptoms - {reasoning} - I strongly recommend Dr. {suggested_doctor.name}. {doctor_details} Dr. {suggested_doctor.name} is our specialist in {specialization.name} and is well-suited for your case. Would you like to proceed with booking an appointment with Dr. {suggested_doctor.name}? Just say 'yes' to continue."
-            else:
-                # Provide detailed comparison
-                urgency_note = ""
-                if urgency_level in ['emergency', 'high_priority']:
-                    urgency_note = f"Given the urgency of your situation, I've prioritized our most experienced doctors. "
-
-                message_text = f"Based on my thorough analysis of your symptoms, I recommend seeing a {specialization.name}. {urgency_note}"
-                message_text += f"I particularly recommend Dr. {suggested_doctor.name}. {doctor_details} "
-
-                if doctors.count() > 1:
-                    other_doctors_list = []
-                    for doc in doctors[1:3]:
-                        other_doctors_list.append(
-                            f"Dr. {doc.name} ({doc.experience_years} years experience, {doc.consultation_fee} rupees)"
-                        )
-
-                    if other_doctors_list:
-                        message_text += f"We also have excellent alternatives: {', or '.join(other_doctors_list)}. "
-
-                message_text += f"Which doctor would you like me to book for you? You can say the doctor's name."
-
-            return {
-                'message': message_text,
-                'stage': 'doctor_selection',
-                'data': session_data,
-                'action': 'continue'
-            }
-
-        except Exception as e:
-            print(f"Error analyzing symptoms with AI: {e}")
-            return {
-                'message': "I'm having trouble analyzing your symptoms right now. Could you tell me which doctor you'd like to see by their name? Or try describing your symptoms again?",
-                'stage': 'doctor_selection',
-                'data': session_data,
-                'action': 'continue'
-            }
+        print(f"[VOICEBOT] Recommendation complete")
+        return {
+            'message': message_text,
+            'stage': 'doctor_selection',
+            'data': session_data,
+            'action': 'continue'
+        }
 
     def _handle_date_selection_ai(self, message, session_data):
         """Handle date selection with AI parsing"""

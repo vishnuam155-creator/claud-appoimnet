@@ -22,6 +22,7 @@ class ClaudeService:
     def analyze_symptoms(self, symptoms_text):
         """
         Analyze patient symptoms and suggest appropriate doctor specialization
+        Optimized for voice input with common transcription errors
         """
         specializations = Specialization.objects.all()
         spec_info = "\n".join([
@@ -29,22 +30,36 @@ class ClaudeService:
             for spec in specializations
         ])
 
-        prompt = f"""You are a medical assistant helping patients find the right doctor.
+        prompt = f"""You are an expert medical triage assistant helping patients find the right doctor specialization.
 
-Available Specializations:
+IMPORTANT: The patient's input may come from voice transcription, so there might be:
+- Casual/conversational language (e.g., "leg pain", "my leg hurts", "pain in leg")
+- Transcription errors or incomplete sentences
+- Simple symptom descriptions without medical terms
+- Multiple symptoms mentioned together
+
+Available Specializations in our system:
 {spec_info}
 
-Patient says: "{symptoms_text}"
+Patient's symptoms (from voice input): "{symptoms_text}"
 
-Analyze the symptoms and determine which specialization would be most appropriate.
-Return your response in JSON format with this structure:
+YOUR TASK:
+1. Analyze the symptoms carefully, considering voice transcription patterns
+2. Match to the MOST appropriate specialization from the list above
+3. Be flexible with matching - "leg pain" = Orthopedic, "heart" = Cardiology, etc.
+4. If uncertain, default to "General Physician"
+
+Return ONLY valid JSON (no markdown, no extra text):
 {{
-    "specialization": "exact name of the specialization",
+    "specialization": "exact specialization name from the list above",
     "confidence": "high/medium/low",
-    "reasoning": "brief explanation of why this specialization is recommended"
+    "reasoning": "brief explanation in one sentence"
 }}
 
-If no clear match, suggest "General Physician" as default.
+Examples:
+- "leg pain" → {{"specialization": "Orthopedic", "confidence": "high", "reasoning": "Leg pain indicates musculoskeletal issue"}}
+- "fever and cough" → {{"specialization": "General Physician", "confidence": "high", "reasoning": "Common flu symptoms"}}
+- "chest pain" → {{"specialization": "Cardiology", "confidence": "high", "reasoning": "Chest pain requires cardiac evaluation"}}
 """
 
         try:
@@ -52,20 +67,35 @@ If no clear match, suggest "General Physician" as default.
             response = model.generate_content(prompt)
 
             response_text = response.text.strip()
+            print(f"[GEMINI] Raw response: {response_text[:200]}")
+
+            # Clean up response - remove markdown formatting if present
+            if response_text.startswith('```json'):
+                response_text = response_text.split('```json')[1].split('```')[0].strip()
+            elif response_text.startswith('```'):
+                response_text = response_text.split('```')[1].split('```')[0].strip()
+
+            # Remove any leading/trailing whitespace
+            response_text = response_text.strip()
 
             # Try to parse JSON
             try:
                 result = json.loads(response_text)
+                print(f"[GEMINI] Parsed result: {result}")
                 return result
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as je:
+                print(f"[GEMINI] JSON decode error: {je}")
+                # Fallback: try to extract specialization from text
                 for spec in specializations:
                     if spec.name.lower() in response_text.lower():
+                        print(f"[GEMINI] Found specialization in text: {spec.name}")
                         return {
                             "specialization": spec.name,
                             "confidence": "medium",
                             "reasoning": "Matched from AI response"
                         }
 
+                print(f"[GEMINI] No match found, using default")
                 return {
                     "specialization": "General Physician",
                     "confidence": "low",
@@ -73,7 +103,9 @@ If no clear match, suggest "General Physician" as default.
                 }
 
         except Exception as e:
-            print(f"Error calling Gemini API: {str(e)}")
+            print(f"[GEMINI] API Error: {str(e)}")
+            import traceback
+            print(f"[GEMINI] Traceback: {traceback.format_exc()}")
             return {
                 "specialization": "General Physician",
                 "confidence": "low",
