@@ -239,6 +239,31 @@
             transform: scale(0.98);
         }
 
+        /* Available slot styling - light green border */
+        .option-button.available {
+            border: 2px solid #10b981;
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+        }
+
+        .option-button.available:hover {
+            background-color: rgba(16, 185, 129, 0.2);
+        }
+
+        /* Booked/unavailable slot styling - light red border */
+        .option-button.booked {
+            border: 2px solid #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .option-button.booked:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+            transform: none;
+        }
+
         /* Input area */
         .chat-input-container {
             background-color: #202c33;
@@ -357,11 +382,11 @@
 
         /* Icons using Unicode */
         .icon-search::before { content: '='; }
-        .icon-menu::before { content: 'î'; }
+        .icon-menu::before { content: 'ï¿½'; }
         .icon-emoji::before { content: '=
 '; }
-        .icon-attach::before { content: '=Î'; }
-        .icon-send::before { content: '¤'; }
+        .icon-attach::before { content: '=ï¿½'; }
+        .icon-send::before { content: 'ï¿½'; }
         .icon-checkmark::before { content: ''; }
         .icon-double-check::before { content: ''; color: #53bdeb; }
     </style>
@@ -370,7 +395,7 @@
     <div class="whatsapp-container">
         <!-- Header -->
         <div class="chat-header">
-            <div class="header-avatar"><å</div>
+            <div class="header-avatar"><ï¿½</div>
             <div class="header-info">
                 <div class="header-name">Healthcare Bot</div>
                 <div class="header-status" id="statusText">Online</div>
@@ -459,9 +484,41 @@
                 options.forEach((option, index) => {
                     const button = document.createElement('button');
                     button.className = 'option-button';
-                    button.textContent = `${index + 1}. ${option.label}`;
+
+                    // Handle availability styling for time/date slots
+                    if (option.hasOwnProperty('available')) {
+                        if (option.available === true) {
+                            // Available slot - green border
+                            button.classList.add('available');
+                        } else if (option.available === false) {
+                            // Booked slot - red border and disabled
+                            button.classList.add('booked');
+                            button.disabled = true;
+                        }
+                    }
+                    // Fallback: check description field for availability markers
+                    else if (option.description) {
+                        if (option.description.includes('Available') || option.description.includes('âœ…')) {
+                            button.classList.add('available');
+                        } else if (option.description.includes('Booked') || option.description.includes('âŒ')) {
+                            button.classList.add('booked');
+                            button.disabled = true;
+                        }
+                    }
+
+                    // Set button text and include description if available
+                    if (option.description && !option.description.includes('years exp.')) {
+                        button.textContent = `${index + 1}. ${option.label} ${option.description}`;
+                    } else {
+                        button.textContent = `${index + 1}. ${option.label}`;
+                    }
+
                     button.dataset.value = option.value;
-                    button.onclick = () => handleOptionClick(option.label, option.value);
+
+                    if (!button.disabled) {
+                        button.onclick = () => handleOptionClick(option.label, option.value);
+                    }
+
                     optionsContainer.appendChild(button);
                 });
 
