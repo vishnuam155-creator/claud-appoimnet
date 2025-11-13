@@ -58,7 +58,7 @@ class VoiceAssistantManager:
 
     def process_voice_message(self, message, session_data):
         """
-        Process voice input with AI intelligence
+        Process voice input with AI intelligence and symptom change detection
 
         Args:
             message: User's voice input (transcribed text)
@@ -68,6 +68,38 @@ class VoiceAssistantManager:
             dict: Response with message, stage, data, action
         """
         current_stage = session_data.get('stage', 'greeting')
+
+        # Check for symptom changes after doctor selection
+        if current_stage in ['date_selection', 'time_selection', 'phone_collection'] and message:
+            if self._detect_symptom_change(message, current_stage):
+                # User is mentioning new symptoms - offer to reconsider doctor
+                return self._handle_mid_conversation_symptom_change(message, session_data)
+
+        # Check if waiting for doctor reconfirmation after symptom change
+        if session_data.get('awaiting_doctor_reconfirmation'):
+            message_lower = message.lower()
+
+            if any(keyword in message_lower for keyword in ['new doctor', 'different doctor', 'another doctor', 're-evaluate', 'find doctor', 'change doctor']):
+                # User wants to find a new doctor based on symptoms
+                session_data.pop('awaiting_doctor_reconfirmation', None)
+                session_data.pop('doctor_id', None)
+                session_data.pop('doctor_name', None)
+                session_data['stage'] = 'doctor_selection'
+
+                symptom_message = session_data.pop('new_symptoms', message)
+                return self._analyze_symptoms_and_suggest_ai(symptom_message, session_data)
+
+            elif any(keyword in message_lower for keyword in ['continue', 'current', 'same', 'yes', 'okay', 'ok', 'vishnu']):
+                # User wants to continue with current doctor
+                session_data.pop('awaiting_doctor_reconfirmation', None)
+                session_data.pop('new_symptoms', None)
+
+                return {
+                    'message': f"Alright, let's continue with Dr. {session_data.get('doctor_name')}. What date would you prefer for your appointment?",
+                    'stage': 'date_selection',
+                    'data': session_data,
+                    'action': 'continue'
+                }
 
         # Detect user intent using Gemini AI
         if message and current_stage != 'greeting':
@@ -183,6 +215,41 @@ class VoiceAssistantManager:
                 'data': session_data,
                 'action': 'continue'
             }
+
+        # Check if user is selecting from alternative doctors
+        if session_data.get('alternative_doctors'):
+            # User may say doctor name or number
+            alternatives = session_data['alternative_doctors']
+            message_lower = message.lower().strip()
+
+            # Check for number selection (1, 2, etc.)
+            if message_lower in ['1', 'one', 'first']:
+                selected_doctor = alternatives[0]
+            elif message_lower in ['2', 'two', 'second'] and len(alternatives) > 1:
+                selected_doctor = alternatives[1]
+            else:
+                # Check for name match
+                selected_doctor = None
+                for alt in alternatives:
+                    if alt['name'].lower() in message_lower or message_lower in alt['name'].lower():
+                        selected_doctor = alt
+                        break
+
+            if selected_doctor:
+                session_data['doctor_id'] = selected_doctor['id']
+                session_data['doctor_name'] = selected_doctor['name']
+                session_data['stage'] = 'date_selection'
+                session_data.pop('alternative_doctors', None)
+
+                next_date_formatted = selected_doctor['next_available'].strftime('%B %d, %Y')
+                days_text = "tomorrow" if selected_doctor['days_away'] == 1 else f"in {selected_doctor['days_away']} days"
+
+                return {
+                    'message': f"Great choice! I'll book you with Dr. {selected_doctor['name']}. They have availability {days_text} on {next_date_formatted}. Would you like to book for that date, or would you prefer a different date?",
+                    'stage': 'date_selection',
+                    'data': session_data,
+                    'action': 'continue'
+                }
 
         # Use AI to determine if this is a doctor name or symptoms
         selection_type = self._classify_doctor_input(message)
@@ -406,16 +473,26 @@ class VoiceAssistantManager:
         available_slots = self._get_available_slots(doctor_id, parsed_date)
 
         if not available_slots:
-            # Suggest next available date
-            next_available = self._find_next_available_date(doctor_id, parsed_date)
+            # Try to find next available date (90 days search)
+            next_available = self._find_next_available_date(doctor_id, parsed_date, max_days=90)
+
             if next_available:
                 next_date_formatted = next_available.strftime('%B %d, %Y')
                 current_date_formatted = parsed_date.strftime('%B %d, %Y')
+                days_diff = (next_available - parsed_date).days
 
-                no_slots_msg = STAGE_PROMPTS['date_selection']['no_slots'].format(
-                    date=current_date_formatted,
-                    alternative_date=next_date_formatted
-                )
+                no_slots_msg = f"I'm sorry, Dr. {session_data.get('doctor_name', 'the doctor')} doesn't have any available slots on {current_date_formatted}. "
+
+                if days_diff <= 7:
+                    no_slots_msg += f"However, I found availability on {next_date_formatted}, which is in {days_diff} days. "
+                    no_slots_msg += "Would you like to book for that date instead? Just say 'yes' or 'book it'."
+                else:
+                    no_slots_msg += f"The next available date is {next_date_formatted}, which is in {days_diff} days. "
+                    no_slots_msg += "Would you like to book for that date, or would you prefer to see a different doctor who might be available sooner?"
+
+                # Store the suggested date for easy confirmation
+                session_data['suggested_date'] = next_available.isoformat()
+
                 return {
                     'message': no_slots_msg,
                     'stage': 'date_selection',
@@ -423,12 +500,56 @@ class VoiceAssistantManager:
                     'action': 'continue'
                 }
             else:
-                return {
-                    'message': STAGE_PROMPTS['date_selection']['no_availability'],
-                    'stage': 'date_selection',
-                    'data': session_data,
-                    'action': 'continue'
-                }
+                # No availability found in 90 days - suggest alternative doctors
+                doctor_name = session_data.get('doctor_name', 'this doctor')
+
+                try:
+                    current_doctor = Doctor.objects.get(id=doctor_id)
+                    specialization_name = current_doctor.specialization.name if current_doctor.specialization else "this specialty"
+
+                    alternatives = self._get_alternative_doctors_with_availability(
+                        doctor_id,
+                        current_doctor.specialization_id if current_doctor.specialization else None,
+                        parsed_date
+                    )
+
+                    if alternatives:
+                        alt_msg = f"Unfortunately, Dr. {doctor_name} doesn't have any availability in the next 3 months. "
+                        alt_msg += f"However, we have other excellent {specialization_name} doctors available:\n\n"
+
+                        for idx, alt in enumerate(alternatives[:2], 1):
+                            days_text = "tomorrow" if alt['days_away'] == 1 else f"in {alt['days_away']} days"
+                            alt_msg += f"{idx}. Dr. {alt['name']} - Available {days_text} ({alt['next_available'].strftime('%B %d')}), "
+                            alt_msg += f"consultation fee {alt['fee']} rupees\n"
+
+                        alt_msg += "\nWhich doctor would you like to book with? You can say the doctor's name or the number."
+
+                        # Store alternatives for easy selection
+                        session_data['alternative_doctors'] = alternatives
+                        session_data['stage'] = 'doctor_selection'
+
+                        return {
+                            'message': alt_msg,
+                            'stage': 'doctor_selection',
+                            'data': session_data,
+                            'action': 'continue'
+                        }
+                    else:
+                        # No alternatives either
+                        return {
+                            'message': f"I apologize, but Dr. {doctor_name} and other {specialization_name} doctors are fully booked for the next few months. Would you like to consider a different type of specialist, or shall I help you with something else?",
+                            'stage': 'doctor_selection',
+                            'data': session_data,
+                            'action': 'continue'
+                        }
+                except Exception as e:
+                    print(f"Error finding alternatives: {e}")
+                    return {
+                        'message': STAGE_PROMPTS['date_selection']['no_availability'],
+                        'stage': 'date_selection',
+                        'data': session_data,
+                        'action': 'continue'
+                    }
 
         session_data['appointment_date'] = parsed_date.isoformat()
         session_data['available_slots'] = available_slots
@@ -1215,10 +1336,20 @@ Phone:"""
 
         return slots
 
-    def _find_next_available_date(self, doctor_id, start_date):
-        """Find next available date for doctor"""
+    def _find_next_available_date(self, doctor_id, start_date, max_days=90):
+        """
+        Find next available date for doctor with extended search range (90 days)
+
+        Args:
+            doctor_id: Doctor ID
+            start_date: Starting date for search
+            max_days: Maximum days to search ahead (default: 90)
+
+        Returns:
+            Next available date or None
+        """
         current_date = start_date + timedelta(days=1)
-        max_date = start_date + timedelta(days=30)
+        max_date = start_date + timedelta(days=max_days)
 
         while current_date <= max_date:
             slots = self._get_available_slots(doctor_id, current_date)
@@ -1227,6 +1358,102 @@ Phone:"""
             current_date += timedelta(days=1)
 
         return None
+
+    def _get_alternative_doctors_with_availability(self, current_doctor_id, specialization_id=None, date_from=None):
+        """
+        Find alternative doctors with availability when current doctor is fully booked
+
+        Args:
+            current_doctor_id: Current doctor being considered
+            specialization_id: Preferred specialization (optional)
+            date_from: Check availability from this date (optional)
+
+        Returns:
+            List of dicts with doctor info and next available date
+        """
+        # Get current doctor's specialization if not provided
+        if not specialization_id:
+            try:
+                current_doctor = Doctor.objects.get(id=current_doctor_id)
+                specialization_id = current_doctor.specialization_id
+            except Doctor.DoesNotExist:
+                return []
+
+        # Find other doctors with same specialization
+        alternative_doctors = Doctor.objects.filter(
+            specialization_id=specialization_id,
+            is_active=True
+        ).exclude(id=current_doctor_id).order_by('consultation_fee')[:3]
+
+        if not date_from:
+            date_from = timezone.now().date()
+
+        doctors_with_availability = []
+
+        for doctor in alternative_doctors:
+            # Check next available date for each doctor (30-day window for alternatives)
+            next_date = self._find_next_available_date(doctor.id, date_from, max_days=30)
+
+            if next_date:
+                doctors_with_availability.append({
+                    'id': doctor.id,
+                    'name': doctor.name,
+                    'fee': doctor.consultation_fee,
+                    'specialization': doctor.specialization.name if doctor.specialization else '',
+                    'next_available': next_date,
+                    'days_away': (next_date - date_from).days
+                })
+
+        # Sort by soonest availability
+        doctors_with_availability.sort(key=lambda x: x['days_away'])
+
+        return doctors_with_availability
+
+    def _detect_symptom_change(self, message, current_stage):
+        """
+        Detect if user is mentioning new symptoms that might require different doctor
+
+        Returns:
+            Boolean indicating if symptoms are mentioned
+        """
+        symptom_keywords = [
+            'pain', 'ache', 'hurt', 'symptom', 'feel', 'sick', 'ill',
+            'fever', 'cold', 'cough', 'headache', 'stomach', 'chest',
+            'back', 'leg', 'arm', 'throat', 'nose', 'ear', 'eye',
+            'dizzy', 'nausea', 'vomit', 'diarrhea', 'constipation',
+            'rash', 'itch', 'swelling', 'bleeding', 'tired', 'weak'
+        ]
+
+        message_lower = message.lower()
+
+        # Check if any symptom keywords are present
+        has_symptoms = any(keyword in message_lower for keyword in symptom_keywords)
+
+        # Additional check: if message contains "I have" or "I feel" or "my"
+        symptom_phrases = ['i have', 'i feel', 'i am', 'my ', 'got ', 'experiencing', 'also']
+        has_symptom_phrase = any(phrase in message_lower for phrase in symptom_phrases)
+
+        return has_symptoms and has_symptom_phrase
+
+    def _handle_mid_conversation_symptom_change(self, message, session_data):
+        """
+        Handle when user mentions new symptoms after already selecting a doctor
+        """
+        current_doctor_name = session_data.get('doctor_name', 'the current doctor')
+
+        response_msg = f"I hear you mentioning additional symptoms. Just to make sure we're booking you with the right specialist, "
+        response_msg += f"would you like me to re-evaluate which doctor is best for you based on all your symptoms, or would you still prefer to continue with Dr. {current_doctor_name}? "
+        response_msg += "You can say 'find new doctor' or 'continue with current doctor'."
+
+        session_data['awaiting_doctor_reconfirmation'] = True
+        session_data['new_symptoms'] = message
+
+        return {
+            'message': response_msg,
+            'stage': session_data.get('stage', 'doctor_selection'),
+            'data': session_data,
+            'action': 'continue'
+        }
 
     def _format_time_slots_for_voice(self, slots):
         """Format time slots for natural voice output"""
