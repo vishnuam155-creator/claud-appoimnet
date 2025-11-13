@@ -170,11 +170,11 @@ class VoiceAssistantManager:
 
             if doctor:
                 session_data['doctor_id'] = doctor.id
-                session_data['doctor_name'] = doctor.full_name
+                session_data['doctor_name'] = doctor.name
                 session_data['stage'] = 'date_selection'
 
                 return {
-                    'message': f"Excellent! I found Dr. {doctor.full_name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
+                    'message': f"Excellent! I found Dr. {doctor.name}, who is a {doctor.specialization.name}. They charge {doctor.consultation_fee} rupees per consultation. Now, what date would you like to book your appointment? You can say something like 'tomorrow', 'next Monday', or mention a specific date.",
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -233,7 +233,7 @@ class VoiceAssistantManager:
             # Get available doctors for this specialization
             doctors = Doctor.objects.filter(
                 specialization=specialization,
-                is_available=True
+                is_active=True
             ).order_by('consultation_fee')
 
             if not doctors.exists():
@@ -248,19 +248,19 @@ class VoiceAssistantManager:
             suggested_doctor = doctors.first()
 
             session_data['suggested_doctors'] = [
-                {'id': doc.id, 'name': doc.full_name, 'fee': doc.consultation_fee}
+                {'id': doc.id, 'name': doc.name, 'fee': doc.consultation_fee}
                 for doc in doctors[:3]
             ]
             session_data['suggested_specialization'] = specialization.name
 
             # Generate intelligent response
             if doctors.count() == 1:
-                message_text = f"Based on your symptoms - {reasoning} - I recommend Dr. {suggested_doctor.full_name}, our {specialization.name}. The consultation fee is {suggested_doctor.consultation_fee} rupees. Would you like to book an appointment with Dr. {suggested_doctor.full_name}? Just say 'yes' or 'book it'."
+                message_text = f"Based on your symptoms - {reasoning} - I recommend Dr. {suggested_doctor.name}, our {specialization.name}. The consultation fee is {suggested_doctor.consultation_fee} rupees. Would you like to book an appointment with Dr. {suggested_doctor.name}? Just say 'yes' or 'book it'."
             else:
-                other_doctors = [f"Dr. {doc.full_name} for {doc.consultation_fee} rupees" for doc in doctors[1:3]]
+                other_doctors = [f"Dr. {doc.name} for {doc.consultation_fee} rupees" for doc in doctors[1:3]]
                 other_doctors_text = ", or ".join(other_doctors) if other_doctors else ""
 
-                message_text = f"Based on your symptoms, I recommend seeing a {specialization.name}. I suggest Dr. {suggested_doctor.full_name} who charges {suggested_doctor.consultation_fee} rupees. "
+                message_text = f"Based on your symptoms, I recommend seeing a {specialization.name}. I suggest Dr. {suggested_doctor.name} who charges {suggested_doctor.consultation_fee} rupees. "
                 if other_doctors_text:
                     message_text += f"We also have {other_doctors_text}. "
                 message_text += f"Which doctor would you like to book with? You can say the doctor's name."
@@ -331,7 +331,7 @@ class VoiceAssistantManager:
             confirmed_doctor = self._confirm_suggested_doctor(message, session_data)
             if confirmed_doctor:
                 session_data['doctor_id'] = confirmed_doctor.id
-                session_data['doctor_name'] = confirmed_doctor.full_name
+                session_data['doctor_name'] = confirmed_doctor.name
                 doctor_id = confirmed_doctor.id
             else:
                 return {
@@ -483,7 +483,7 @@ class VoiceAssistantManager:
         # Format phone number for speaking (e.g., "98765 43210")
         phone_formatted = f"{phone[:5]} {phone[5:]}"
 
-        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.full_name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
+        summary = f"Perfect! Let me confirm your appointment details. Your name is {session_data['patient_name']}. You're booking with Dr. {doctor.name}, who is a {doctor.specialization.name}. The appointment is on {date_str} at {session_data['appointment_time']}. Your phone number is {phone_formatted}. Is everything correct? Say 'yes' to confirm or tell me what needs to be changed."
 
         return {
             'message': summary,
@@ -519,7 +519,7 @@ class VoiceAssistantManager:
                     date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
 
                     return {
-                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.full_name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
+                        'message': f"Wonderful! Your appointment has been successfully booked. Your booking ID is {appointment.id}. You'll receive an SMS confirmation shortly at {session_data['phone']}. To recap: you have an appointment with Dr. {doctor.name} on {date_str} at {session_data['appointment_time']}. Is there anything else I can help you with today?",
                         'stage': 'completed',
                         'data': session_data,
                         'action': 'booking_complete'
@@ -666,15 +666,18 @@ Name:"""
         cleaned = message.lower().strip()
         cleaned = re.sub(r'^(?:doctor|dr\.?|i want|i need|book)\s+', '', cleaned)
 
-        doctors = Doctor.objects.filter(is_available=True)
+        doctors = Doctor.objects.filter(is_active=True)
         best_match = None
         best_score = 0
 
         for doctor in doctors:
             score = 0
-            doctor_name_lower = doctor.full_name.lower()
-            first_name = doctor.first_name.lower()
-            last_name = doctor.last_name.lower()
+            doctor_name_lower = doctor.name.lower()
+
+            # Parse name into parts for flexible matching
+            name_parts = doctor.name.split()
+            first_name = name_parts[0].lower() if name_parts else ""
+            last_name = name_parts[-1].lower() if len(name_parts) > 1 else ""
 
             if cleaned == doctor_name_lower:
                 score = 100
@@ -716,41 +719,80 @@ Name:"""
         return None
 
     def _parse_date_with_ai(self, message):
-        """Parse date using AI + existing parser"""
+        """Parse date using AI with comprehensive natural language understanding"""
         # First try the existing parser
-        parsed = self.date_parser.parse_date(message)
+        parsed = self.date_parser.parse(message)
         if parsed:
+            print(f"Date parsed by DateParser: {parsed}")
             return parsed
 
-        # If that fails, use AI
+        # If that fails, use Gemini AI with enhanced prompt
         try:
             model = genai.GenerativeModel(self.gemini_model)
             today = timezone.now().date()
-            prompt = f"""Today's date is {today.strftime('%Y-%m-%d')} ({today.strftime('%A, %B %d, %Y')}).
+            current_weekday = today.strftime('%A')
 
-Extract the date from this message: "{message}"
+            prompt = f"""You are a date parser for a medical appointment booking system.
 
-Return the date in YYYY-MM-DD format ONLY. If no valid date found, return "NOT_FOUND".
+Today's date: {today.strftime('%Y-%m-%d')} ({today.strftime('%A, %B %d, %Y')})
+Current day of week: {current_weekday}
 
-Examples:
+Patient said: "{message}"
+
+Extract the appointment date from what the patient said and return it in YYYY-MM-DD format ONLY.
+
+IMPORTANT RULES:
+1. If patient says a day of the week (Monday, Tuesday, etc.), find the NEXT occurrence of that day
+2. "Wednesday" means the next Wednesday from today
+3. "coming Wednesday" or "this Wednesday" means the next Wednesday
+4. "next Wednesday" means the Wednesday after the coming Wednesday (7 days later if today is not Wednesday, or 14 days if it is)
+5. "tomorrow" means {(today + timedelta(days=1)).strftime('%Y-%m-%d')}
+6. "day after tomorrow" means {(today + timedelta(days=2)).strftime('%Y-%m-%d')}
+7. For month+day like "December 15", use the upcoming occurrence (this year if not passed, else next year)
+8. For just a number like "15th", assume the current or next month
+
+EXAMPLES:
 - "tomorrow" → {(today + timedelta(days=1)).strftime('%Y-%m-%d')}
-- "next monday" → (calculate next Monday from today)
-- "december 15" → 2025-12-15 (or 2024-12-15 if before today's date, use 2025)
-- "15th" → (assume current month/next month)
+- "Wednesday" → (calculate next Wednesday from {today})
+- "coming Wednesday" → (calculate next Wednesday from {today})
+- "this Wednesday" → (calculate next Wednesday from {today})
+- "next Wednesday" → (calculate Wednesday after next from {today})
+- "next Monday" → (calculate next Monday from {today})
+- "December 15" → 2025-12-15 (if not passed) or 2026-12-15
+- "15th" → (assume current or next month)
+- "day after tomorrow" → {(today + timedelta(days=2)).strftime('%Y-%m-%d')}
+
+RESPONSE FORMAT:
+- Return ONLY the date in YYYY-MM-DD format
+- If unclear or no date mentioned, return "NOT_FOUND"
+- Do NOT include any explanation, just the date
 
 Date:"""
 
+            print(f"Sending to Gemini AI for date parsing: {message}")
             response = model.generate_content(prompt)
             result = response.text.strip()
+            print(f"Gemini AI date parsing result: {result}")
 
-            if result == "NOT_FOUND":
+            if result == "NOT_FOUND" or not result:
+                print("Gemini could not parse date")
                 return None
 
+            # Clean up the result (remove any extra text)
+            # Extract YYYY-MM-DD pattern
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', result)
+            if date_match:
+                result = date_match.group(1)
+
             # Parse YYYY-MM-DD format
-            return datetime.strptime(result, '%Y-%m-%d').date()
+            parsed_date = datetime.strptime(result, '%Y-%m-%d').date()
+            print(f"Successfully parsed date: {parsed_date}")
+            return parsed_date
 
         except Exception as e:
             print(f"AI date parsing error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _extract_time_with_ai(self, message):
@@ -1120,7 +1162,7 @@ Phone:"""
                 from twilio_service import send_sms
                 send_sms(
                     to=session_data['phone'],
-                    message=f"Appointment confirmed! Dr. {doctor.full_name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
+                    message=f"Appointment confirmed! Dr. {doctor.name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
                 )
             except Exception as e:
                 print(f"SMS sending failed: {e}")
