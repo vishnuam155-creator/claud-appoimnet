@@ -3,8 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Assistant - MediBot</title>
+    <title>MediBot Voice Assistant - AI Medical Booking</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
     <style>
+        :root {
+            --primary: #0ea5e9;
+            --primary-dark: #0284c7;
+            --primary-light: #7dd3fc;
+            --secondary: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #1e293b;
+            --light: #f1f5f9;
+            --white: #ffffff;
+            --text: #334155;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --shadow: rgba(0, 0, 0, 0.1);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,140 +33,414 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
             display: flex;
-            justify-content: center;
             align-items: center;
-            overflow: hidden;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 600px;
+            justify-content: center;
             padding: 20px;
-            text-align: center;
+            overflow-x: hidden;
         }
 
-        .assistant-card {
-            background: rgba(255, 255, 255, 0.95);
+        /* Animated Background */
+        .bg-shapes {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .shape {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .shape:nth-child(1) {
+            width: 300px;
+            height: 300px;
+            top: -150px;
+            left: -150px;
+            animation-delay: 0s;
+        }
+
+        .shape:nth-child(2) {
+            width: 200px;
+            height: 200px;
+            bottom: -100px;
+            right: -100px;
+            animation-delay: 5s;
+        }
+
+        .shape:nth-child(3) {
+            width: 150px;
+            height: 150px;
+            top: 50%;
+            right: 10%;
+            animation-delay: 10s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(50px, 50px) rotate(90deg); }
+            50% { transform: translate(0, 100px) rotate(180deg); }
+            75% { transform: translate(-50px, 50px) rotate(270deg); }
+        }
+
+        /* Main Container */
+        .main-container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 30px;
+            align-items: start;
+        }
+
+        /* Voice Control Panel */
+        .voice-panel {
+            background: var(--white);
             border-radius: 30px;
-            padding: 40px 30px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 20px;
         }
 
-        h1 {
-            color: #667eea;
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            color: #666;
-            font-size: 1em;
+        .voice-panel-header {
+            text-align: center;
             margin-bottom: 30px;
         }
 
-        /* AI Wave Animation */
-        .wave-container {
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .voice-panel-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .voice-panel-header p {
+            color: var(--text-light);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Voice Visualizer */
+        .voice-visualizer {
+            position: relative;
             width: 200px;
             height: 200px;
             margin: 0 auto 30px;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
 
-        .wave {
+        .visualizer-circle {
             position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             width: 100%;
             height: 100%;
             border-radius: 50%;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            opacity: 0.4;
-            animation: pulse 2s ease-in-out infinite;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 40px rgba(14, 165, 233, 0.3);
         }
 
-        .wave:nth-child(2) {
-            animation-delay: 0.3s;
-            opacity: 0.3;
+        .visualizer-circle::before,
+        .visualizer-circle::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            border: 3px solid var(--primary-light);
+            opacity: 0;
         }
 
-        .wave:nth-child(3) {
-            animation-delay: 0.6s;
-            opacity: 0.2;
+        .visualizer-circle.listening {
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(0.5);
-                opacity: 0.4;
+        .visualizer-circle.listening::before {
+            width: 120%;
+            height: 120%;
+            animation: sonar 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .visualizer-circle.listening::after {
+            width: 140%;
+            height: 140%;
+            animation: sonar 2s 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse-ring {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.05); }
+        }
+
+        @keyframes sonar {
+            0% {
+                opacity: 0;
+                transform: scale(0.8);
             }
-            50% {
-                transform: scale(1);
-                opacity: 0.1;
+            25% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: scale(1.4);
             }
         }
 
         .mic-icon {
-            position: relative;
-            z-index: 10;
-            font-size: 60px;
-            color: #667eea;
+            font-size: 80px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
             transition: all 0.3s ease;
         }
 
-        .mic-icon.listening {
-            color: #f43f5e;
-            animation: glow 1.5s ease-in-out infinite;
+        .visualizer-circle.listening .mic-icon {
+            animation: mic-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes mic-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Status Display */
+        .status-display {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 10px 24px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            background: var(--light);
+            color: var(--text);
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.listening {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        .status-badge.speaking {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .status-badge.processing {
+            background: linear-gradient(135deg, var(--warning), #ea580c);
+            color: white;
         }
 
         @keyframes glow {
             0%, 100% {
-                filter: drop-shadow(0 0 10px #f43f5e);
+                box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
             }
             50% {
-                filter: drop-shadow(0 0 20px #f43f5e);
+                box-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
             }
         }
 
-        /* Status and Messages */
-        .status {
-            font-size: 1.1em;
-            font-weight: 600;
-            color: #667eea;
-            margin-bottom: 20px;
-            min-height: 30px;
-        }
-
-        .status.listening {
-            color: #f43f5e;
-        }
-
-        .message-display {
-            background: #f8fafc;
-            border-radius: 15px;
+        /* Transcript Display */
+        .transcript-box {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-radius: 16px;
             padding: 20px;
-            margin-bottom: 20px;
-            min-height: 100px;
-            max-height: 200px;
+            margin-bottom: 25px;
+            min-height: 80px;
+            border: 2px solid var(--primary-light);
+        }
+
+        .transcript-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .transcript-text {
+            font-size: 16px;
+            color: var(--text);
+            line-height: 1.6;
+            font-weight: 500;
+        }
+
+        .transcript-text.empty {
+            color: var(--text-light);
+            font-style: italic;
+        }
+
+        /* Control Buttons */
+        .controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-start:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.5);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-stop:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(239, 68, 68, 0.5);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-icon {
+            font-size: 20px;
+        }
+
+        /* Conversation Panel */
+        .conversation-panel {
+            background: var(--white);
+            border-radius: 30px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            max-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .conversation-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .conversation-header h2 {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .conversation-header p {
+            color: var(--text-light);
+            font-size: 14px;
+        }
+
+        .conversation-stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        .stat-icon {
+            font-size: 18px;
+        }
+
+        /* Messages Area */
+        .messages-container {
+            flex: 1;
             overflow-y: auto;
-            text-align: left;
+            padding-right: 10px;
+            margin-bottom: 20px;
+        }
+
+        .messages-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .messages-container::-webkit-scrollbar-track {
+            background: var(--light);
+            border-radius: 10px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb {
+            background: var(--primary-light);
+            border-radius: 10px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
         }
 
         .message {
-            margin-bottom: 15px;
-            padding: 10px 15px;
-            border-radius: 10px;
-            animation: slideIn 0.3s ease;
+            margin-bottom: 20px;
+            animation: messageSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        @keyframes slideIn {
+        @keyframes messageSlideIn {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(20px);
             }
             to {
                 opacity: 1;
@@ -153,183 +448,377 @@
             }
         }
 
-        .message.user {
-            background: #667eea;
-            color: white;
-            margin-left: 20%;
-            text-align: right;
-        }
-
-        .message.bot {
-            background: #e2e8f0;
-            color: #334155;
-            margin-right: 20%;
-        }
-
-        /* Controls */
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin-top: 20px;
-        }
-
-        .btn {
-            padding: 15px 30px;
-            border: none;
-            border-radius: 25px;
-            font-size: 1em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
+        .message-header {
             display: flex;
             align-items: center;
             gap: 10px;
+            margin-bottom: 8px;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, var(--secondary), #7c3aed);
             color: white;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        .message.bot .message-avatar {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
         }
 
-        .btn-secondary {
-            background: #e2e8f0;
-            color: #334155;
+        .message-sender {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--dark);
         }
 
-        .btn-secondary:hover {
-            background: #cbd5e1;
+        .message-time {
+            font-size: 11px;
+            color: var(--text-light);
+            margin-left: auto;
         }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .message-bubble {
+            padding: 16px 20px;
+            border-radius: 16px;
+            font-size: 15px;
+            line-height: 1.6;
+            max-width: 85%;
         }
 
-        /* Transcript */
-        .transcript {
-            background: #f8fafc;
-            border-radius: 15px;
-            padding: 15px;
-            margin-top: 20px;
-            text-align: left;
-            font-size: 0.9em;
-            color: #64748b;
-            max-height: 100px;
-            overflow-y: auto;
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, var(--secondary), #7c3aed);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
         }
 
-        .transcript-label {
+        .message.bot .message-bubble {
+            background: var(--light);
+            color: var(--text);
+            border-bottom-left-radius: 4px;
+        }
+
+        /* Typing Indicator */
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 20px;
+            background: var(--light);
+            border-radius: 16px;
+            width: fit-content;
+            margin-bottom: 20px;
+        }
+
+        .typing-indicator.show {
+            display: flex;
+            animation: messageSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--primary);
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.5;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* Session Info */
+        .session-info {
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+            border-radius: 16px;
+            padding: 16px;
+            border: 2px solid var(--success);
+        }
+
+        .session-info-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--success);
+            margin-bottom: 8px;
+        }
+
+        .session-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .session-detail {
+            font-size: 13px;
+        }
+
+        .session-detail-label {
+            color: var(--text-light);
             font-weight: 600;
-            color: #475569;
-            margin-bottom: 5px;
         }
 
-        /* Loading */
-        .loading {
-            display: inline-block;
+        .session-detail-value {
+            color: var(--text);
+            font-weight: 700;
         }
 
-        .loading:after {
-            content: '.';
-            animation: dots 1.5s steps(3, end) infinite;
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-light);
         }
 
-        @keyframes dots {
-            0%, 20% {
-                content: '.';
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                max-width: 600px;
             }
-            40% {
-                content: '..';
+
+            .voice-panel {
+                position: static;
             }
-            60%, 100% {
-                content: '...';
+
+            .conversation-panel {
+                max-height: 600px;
             }
         }
 
-        /* Mobile Responsive */
-        @media (max-width: 768px) {
-            .assistant-card {
-                padding: 30px 20px;
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
             }
 
-            h1 {
-                font-size: 1.5em;
+            .voice-panel,
+            .conversation-panel {
+                padding: 24px;
+                border-radius: 20px;
             }
 
-            .wave-container {
-                width: 150px;
-                height: 150px;
+            .voice-panel-header h1 {
+                font-size: 22px;
+            }
+
+            .voice-visualizer {
+                width: 160px;
+                height: 160px;
             }
 
             .mic-icon {
-                font-size: 50px;
+                font-size: 60px;
             }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .message-bubble {
+                max-width: 90%;
+            }
+
+            .conversation-stats {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+
+        /* Utility Classes */
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="assistant-card">
-            <h1>🤖 MediBot Voice Assistant</h1>
-            <p class="subtitle">Your AI-Powered Medical Appointment Booking Assistant</p>
+    <!-- Animated Background -->
+    <div class="bg-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
 
-            <!-- AI Wave Animation -->
-            <div class="wave-container">
-                <div class="wave"></div>
-                <div class="wave"></div>
-                <div class="wave"></div>
-                <div class="mic-icon" id="micIcon">🎤</div>
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Voice Control Panel -->
+        <div class="voice-panel">
+            <div class="voice-panel-header">
+                <div class="logo">🏥</div>
+                <h1>MediBot AI</h1>
+                <p>Voice Medical Assistant</p>
             </div>
 
-            <!-- Status -->
-            <div class="status" id="status">Click "Start" to begin</div>
-
-            <!-- Message Display -->
-            <div class="message-display" id="messageDisplay">
-                <div class="message bot">
-                    Hello! I'm MediBot, your voice medical assistant. Click "Start" and I'll help you book an appointment.
+            <!-- Voice Visualizer -->
+            <div class="voice-visualizer">
+                <div class="visualizer-circle" id="visualizer">
+                    <div class="mic-icon">🎤</div>
                 </div>
             </div>
 
-            <!-- Transcript -->
-            <div class="transcript">
-                <div class="transcript-label">You're saying:</div>
-                <div id="transcript">...</div>
+            <!-- Status Display -->
+            <div class="status-display">
+                <span class="status-badge" id="statusBadge">Ready to Start</span>
             </div>
 
-            <!-- Controls -->
+            <!-- Transcript Display -->
+            <div class="transcript-box">
+                <div class="transcript-label">📝 You're saying:</div>
+                <div class="transcript-text empty" id="transcript">Click "Start" to begin...</div>
+            </div>
+
+            <!-- Control Buttons -->
             <div class="controls">
-                <button class="btn btn-primary" id="startBtn" onclick="startVoiceAssistant()">
-                    <span>▶️</span> Start
+                <button class="btn btn-start" id="startBtn" onclick="startVoiceAssistant()">
+                    <span class="btn-icon">▶️</span>
+                    <span>Start</span>
                 </button>
-                <button class="btn btn-secondary" id="stopBtn" onclick="stopVoiceAssistant()" disabled>
-                    <span>⏹️</span> Stop
+                <button class="btn btn-stop" id="stopBtn" onclick="stopVoiceAssistant()" disabled>
+                    <span class="btn-icon">⏹️</span>
+                    <span>Stop</span>
                 </button>
+            </div>
+        </div>
+
+        <!-- Conversation Panel -->
+        <div class="conversation-panel">
+            <div class="conversation-header">
+                <h2>💬 Conversation</h2>
+                <p>Real-time conversation with your AI medical assistant</p>
+                <div class="conversation-stats">
+                    <div class="stat">
+                        <span class="stat-icon">🕐</span>
+                        <span id="sessionTime">00:00</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">💭</span>
+                        <span><span id="messageCount">0</span> messages</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">📍</span>
+                        <span id="currentStage">Not started</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🎯</div>
+                    <h3>Ready to Book Your Appointment</h3>
+                    <p>Click "Start" and speak to begin booking your medical appointment</p>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+                <span>MediBot is thinking...</span>
+            </div>
+
+            <!-- Session Info (shown when active) -->
+            <div class="session-info hidden" id="sessionInfo">
+                <div class="session-info-title">📋 Session Details</div>
+                <div class="session-details">
+                    <div class="session-detail">
+                        <div class="session-detail-label">Patient:</div>
+                        <div class="session-detail-value" id="patientName">-</div>
+                    </div>
+                    <div class="session-detail">
+                        <div class="session-detail-label">Doctor:</div>
+                        <div class="session-detail-value" id="doctorName">-</div>
+                    </div>
+                    <div class="session-detail">
+                        <div class="session-detail-label">Date:</div>
+                        <div class="session-detail-value" id="appointmentDate">-</div>
+                    </div>
+                    <div class="session-detail">
+                        <div class="session-detail-label">Time:</div>
+                        <div class="session-detail-value" id="appointmentTime">-</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Voice Assistant State
+        // ==========================================
+        // Voice Assistant State Management
+        // ==========================================
         let isListening = false;
         let recognition = null;
         let sessionId = 'voice_' + Date.now();
         let sessionData = {};
         let speechSynthesis = window.speechSynthesis;
         let isSpeaking = false;
+        let messageCount = 0;
+        let sessionStartTime = null;
+        let sessionTimer = null;
 
+        // ==========================================
         // Initialize Speech Recognition
+        // ==========================================
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
             if (!SpeechRecognition) {
-                alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+                alert('❌ Speech recognition is not supported in your browser.\n\nPlease use:\n• Chrome\n• Edge\n• Safari (iOS 14.5+)');
                 return null;
             }
 
@@ -337,13 +826,14 @@
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'en-IN';
+            recognition.maxAlternatives = 1;
 
             let finalTranscript = '';
             let silenceTimer = null;
 
             recognition.onstart = () => {
-                console.log('Voice recognition started');
-                updateStatus('Listening...', true);
+                console.log('🎤 Voice recognition started');
+                updateStatus('listening');
             };
 
             recognition.onresult = (event) => {
@@ -359,54 +849,68 @@
                 }
 
                 // Update transcript display
-                document.getElementById('transcript').textContent =
-                    interimTranscript || finalTranscript || '...';
+                const transcriptEl = document.getElementById('transcript');
+                const displayText = interimTranscript || finalTranscript || 'Listening...';
+                transcriptEl.textContent = displayText;
+                transcriptEl.classList.remove('empty');
 
                 // Clear previous silence timer
                 if (silenceTimer) clearTimeout(silenceTimer);
 
-                // Set new silence timer (1.5 seconds of silence)
+                // Set new silence timer (1.5 seconds)
                 if (finalTranscript.trim()) {
                     silenceTimer = setTimeout(() => {
                         if (finalTranscript.trim() && !isSpeaking) {
                             processSpeech(finalTranscript.trim());
                             finalTranscript = '';
-                            document.getElementById('transcript').textContent = '...';
+                            transcriptEl.textContent = 'Listening...';
                         }
                     }, 1500);
                 }
             };
 
             recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
+                console.error('❌ Speech recognition error:', event.error);
+
                 if (event.error === 'no-speech') {
-                    // Restart if no speech detected
                     if (isListening && !isSpeaking) {
-                        recognition.start();
+                        setTimeout(() => {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                console.log('Restart after no-speech:', e);
+                            }
+                        }, 100);
                     }
+                } else if (event.error === 'network') {
+                    addSystemMessage('⚠️ Network error. Please check your internet connection.');
+                } else if (event.error === 'not-allowed') {
+                    addSystemMessage('❌ Microphone access denied. Please allow microphone access.');
+                    stopVoiceAssistant();
                 }
             };
 
             recognition.onend = () => {
-                console.log('Voice recognition ended');
-                // Auto-restart if still in listening mode and not speaking
+                console.log('🔴 Voice recognition ended');
                 if (isListening && !isSpeaking) {
                     setTimeout(() => {
                         try {
                             recognition.start();
                         } catch (e) {
-                            console.log('Recognition restart failed:', e);
+                            console.log('Restart failed:', e);
                         }
                     }, 100);
                 } else {
-                    updateStatus('Click "Start" to begin', false);
+                    updateStatus('ready');
                 }
             };
 
             return recognition;
         }
 
+        // ==========================================
         // Start Voice Assistant
+        // ==========================================
         function startVoiceAssistant() {
             if (!recognition) {
                 recognition = initSpeechRecognition();
@@ -414,8 +918,14 @@
             }
 
             isListening = true;
+            sessionStartTime = Date.now();
+            startSessionTimer();
+
+            // Update UI
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
+            document.querySelector('.empty-state')?.classList.add('hidden');
+            document.getElementById('sessionInfo').classList.remove('hidden');
 
             try {
                 recognition.start();
@@ -423,9 +933,7 @@
                 // Send initial greeting
                 fetch('/voicebot/api/', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: '',
                         session_id: sessionId,
@@ -437,18 +945,26 @@
                     addMessage(data.message, 'bot');
                     speak(data.message);
                     sessionData = data.data || {};
+                    updateSessionInfo(sessionData);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addSystemMessage('❌ Failed to connect to server. Please try again.');
                 });
 
             } catch (e) {
                 console.error('Failed to start recognition:', e);
-                alert('Failed to start voice recognition. Please try again.');
+                alert('❌ Failed to start voice recognition. Please try again.');
                 resetVoiceAssistant();
             }
         }
 
+        // ==========================================
         // Stop Voice Assistant
+        // ==========================================
         function stopVoiceAssistant() {
             isListening = false;
+            stopSessionTimer();
 
             if (recognition) {
                 recognition.stop();
@@ -458,34 +974,55 @@
                 speechSynthesis.cancel();
             }
 
+            // Update UI
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
-            updateStatus('Stopped', false);
+            document.getElementById('transcript').textContent = 'Click "Start" to begin...';
+            document.getElementById('transcript').classList.add('empty');
+            updateStatus('ready');
 
-            // Reset session
+            // Reset session after delay
+            setTimeout(() => {
+                if (confirm('Would you like to start a new conversation?')) {
+                    resetVoiceAssistant();
+                }
+            }, 500);
+        }
+
+        // ==========================================
+        // Reset Voice Assistant
+        // ==========================================
+        function resetVoiceAssistant() {
             sessionId = 'voice_' + Date.now();
             sessionData = {};
-        }
-
-        // Reset Voice Assistant
-        function resetVoiceAssistant() {
-            stopVoiceAssistant();
-            document.getElementById('messageDisplay').innerHTML = `
-                <div class="message bot">
-                    Hello! I'm MediBot, your voice medical assistant. Click "Start" and I'll help you book an appointment.
+            messageCount = 0;
+            document.getElementById('messageCount').textContent = '0';
+            document.getElementById('currentStage').textContent = 'Not started';
+            document.getElementById('messagesContainer').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🎯</div>
+                    <h3>Ready to Book Your Appointment</h3>
+                    <p>Click "Start" and speak to begin booking your medical appointment</p>
                 </div>
             `;
+            document.getElementById('sessionInfo').classList.add('hidden');
+            updateSessionInfo({});
         }
 
+        // ==========================================
         // Process Speech
+        // ==========================================
         function processSpeech(message) {
             if (!message || message.trim() === '') return;
 
-            // Add user message to display
+            console.log('📤 Processing:', message);
+
+            // Add user message
             addMessage(message, 'user');
 
-            // Update status
-            updateStatus('Processing<span class="loading"></span>', false);
+            // Show typing indicator
+            updateStatus('processing');
+            document.getElementById('typingIndicator').classList.add('show');
 
             // Stop listening while processing
             if (recognition && isListening) {
@@ -493,11 +1030,9 @@
             }
 
             // Send to backend
-            fetch('/api/voice-assistant/', {
+            fetch('/voicebot/api/', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: message,
                     session_id: sessionId,
@@ -506,11 +1041,19 @@
             })
             .then(response => response.json())
             .then(data => {
+                // Hide typing indicator
+                document.getElementById('typingIndicator').classList.remove('show');
+
                 // Add bot response
                 addMessage(data.message, 'bot');
 
                 // Update session data
                 sessionData = data.data || {};
+                updateSessionInfo(sessionData);
+
+                // Update current stage
+                const stage = sessionData.stage || 'Not started';
+                document.getElementById('currentStage').textContent = formatStageName(stage);
 
                 // Speak response
                 speak(data.message);
@@ -518,7 +1061,8 @@
                 // Check if completed
                 if (data.action === 'booking_complete') {
                     setTimeout(() => {
-                        if (confirm('Booking completed! Would you like to book another appointment?')) {
+                        const bookAgain = confirm('✅ Booking completed successfully!\n\nWould you like to book another appointment?');
+                        if (bookAgain) {
                             resetVoiceAssistant();
                             startVoiceAssistant();
                         } else {
@@ -529,8 +1073,9 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                addMessage('Sorry, I encountered an error. Please try again.', 'bot');
-                updateStatus('Listening...', true);
+                document.getElementById('typingIndicator').classList.remove('show');
+                addSystemMessage('❌ Error connecting to server. Please try again.');
+                updateStatus('listening');
 
                 // Restart listening
                 if (isListening) {
@@ -545,25 +1090,28 @@
             });
         }
 
+        // ==========================================
         // Text-to-Speech
+        // ==========================================
         function speak(text) {
-            // Cancel any ongoing speech
             if (speechSynthesis.speaking) {
                 speechSynthesis.cancel();
             }
 
             isSpeaking = true;
-            updateStatus('Speaking...', false);
+            updateStatus('speaking');
 
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'en-IN';
-            utterance.rate = 0.9;
+            utterance.rate = 0.95;
             utterance.pitch = 1;
+            utterance.volume = 1;
 
-            // Select a pleasant voice
+            // Select voice
             const voices = speechSynthesis.getVoices();
             const preferredVoice = voices.find(voice =>
-                voice.name.includes('Google') && voice.lang.startsWith('en')
+                (voice.name.includes('Google') || voice.name.includes('Microsoft')) &&
+                voice.lang.startsWith('en')
             ) || voices.find(voice => voice.lang.startsWith('en'));
 
             if (preferredVoice) {
@@ -572,28 +1120,26 @@
 
             utterance.onend = () => {
                 isSpeaking = false;
-                console.log('Speech ended');
+                console.log('🔇 Speech ended');
 
-                // Resume listening after speaking
                 if (isListening) {
-                    updateStatus('Listening...', true);
+                    updateStatus('listening');
                     setTimeout(() => {
                         try {
                             recognition.start();
                         } catch (e) {
-                            console.log('Recognition already started or error:', e);
+                            console.log('Recognition restart failed:', e);
                         }
                     }, 500);
                 }
             };
 
             utterance.onerror = (event) => {
-                console.error('Speech synthesis error:', event);
+                console.error('Speech error:', event);
                 isSpeaking = false;
 
-                // Resume listening even if speech failed
                 if (isListening) {
-                    updateStatus('Listening...', true);
+                    updateStatus('listening');
                     setTimeout(() => {
                         try {
                             recognition.start();
@@ -607,51 +1153,173 @@
             speechSynthesis.speak(utterance);
         }
 
-        // Add Message to Display
+        // ==========================================
+        // Add Message to Conversation
+        // ==========================================
         function addMessage(text, sender) {
-            const messageDisplay = document.getElementById('messageDisplay');
+            const container = document.getElementById('messagesContainer');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
-            messageDiv.textContent = text;
-            messageDisplay.appendChild(messageDiv);
 
-            // Scroll to bottom
-            messageDisplay.scrollTop = messageDisplay.scrollHeight;
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
 
-            // Keep only last 10 messages
-            const messages = messageDisplay.querySelectorAll('.message');
-            if (messages.length > 10) {
+            const avatar = sender === 'user' ? '👤' : '🤖';
+            const senderName = sender === 'user' ? 'You' : 'MediBot';
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-avatar">${avatar}</div>
+                    <div class="message-sender">${senderName}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+                <div class="message-bubble">${text}</div>
+            `;
+
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+
+            // Update message count
+            messageCount++;
+            document.getElementById('messageCount').textContent = messageCount;
+
+            // Keep only last 20 messages
+            const messages = container.querySelectorAll('.message');
+            if (messages.length > 20) {
                 messages[0].remove();
             }
         }
 
+        // ==========================================
+        // Add System Message
+        // ==========================================
+        function addSystemMessage(text) {
+            const container = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot';
+            messageDiv.innerHTML = `
+                <div class="message-bubble" style="background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; border: 2px solid #f59e0b;">
+                    ${text}
+                </div>
+            `;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ==========================================
         // Update Status
-        function updateStatus(text, listening) {
-            const statusEl = document.getElementById('status');
-            const micIcon = document.getElementById('micIcon');
+        // ==========================================
+        function updateStatus(status) {
+            const statusBadge = document.getElementById('statusBadge');
+            const visualizer = document.getElementById('visualizer');
 
-            statusEl.innerHTML = text;
+            statusBadge.className = 'status-badge';
+            visualizer.classList.remove('listening');
 
-            if (listening) {
-                statusEl.classList.add('listening');
-                micIcon.classList.add('listening');
-            } else {
-                statusEl.classList.remove('listening');
-                micIcon.classList.remove('listening');
+            switch (status) {
+                case 'listening':
+                    statusBadge.classList.add('listening');
+                    statusBadge.textContent = '🎤 Listening...';
+                    visualizer.classList.add('listening');
+                    break;
+                case 'speaking':
+                    statusBadge.classList.add('speaking');
+                    statusBadge.textContent = '🔊 Speaking...';
+                    break;
+                case 'processing':
+                    statusBadge.classList.add('processing');
+                    statusBadge.textContent = '⚡ Processing...';
+                    break;
+                case 'ready':
+                default:
+                    statusBadge.textContent = '✅ Ready to Start';
+                    break;
             }
         }
 
-        // Load voices (needed for speech synthesis)
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = () => {
-                speechSynthesis.getVoices();
-            };
+        // ==========================================
+        // Update Session Info
+        // ==========================================
+        function updateSessionInfo(data) {
+            document.getElementById('patientName').textContent = data.patient_name || '-';
+            document.getElementById('doctorName').textContent = data.doctor_name || '-';
+
+            if (data.appointment_date) {
+                const date = new Date(data.appointment_date);
+                document.getElementById('appointmentDate').textContent =
+                    date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            } else {
+                document.getElementById('appointmentDate').textContent = '-';
+            }
+
+            document.getElementById('appointmentTime').textContent = data.appointment_time || '-';
         }
 
-        // Initialize on page load
+        // ==========================================
+        // Format Stage Name
+        // ==========================================
+        function formatStageName(stage) {
+            const stageNames = {
+                'greeting': '👋 Greeting',
+                'patient_name': '📝 Getting Name',
+                'doctor_selection': '👨‍⚕️ Selecting Doctor',
+                'date_selection': '📅 Choosing Date',
+                'time_selection': '🕐 Choosing Time',
+                'phone_collection': '📞 Getting Contact',
+                'confirmation': '✅ Confirming',
+                'completed': '🎉 Completed'
+            };
+            return stageNames[stage] || stage;
+        }
+
+        // ==========================================
+        // Session Timer
+        // ==========================================
+        function startSessionTimer() {
+            sessionTimer = setInterval(() => {
+                if (sessionStartTime) {
+                    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('sessionTime').textContent =
+                        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        function stopSessionTimer() {
+            if (sessionTimer) {
+                clearInterval(sessionTimer);
+                sessionTimer = null;
+            }
+        }
+
+        // ==========================================
+        // Initialize on Load
+        // ==========================================
         window.addEventListener('load', () => {
             // Preload voices
             speechSynthesis.getVoices();
+
+            // Voice change handler
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => {
+                    speechSynthesis.getVoices();
+                };
+            }
+
+            console.log('✅ MediBot Voice Assistant Ready');
+        });
+
+        // ==========================================
+        // Cleanup on Unload
+        // ==========================================
+        window.addEventListener('beforeunload', () => {
+            if (isListening) {
+                stopVoiceAssistant();
+            }
         });
     </script>
 </body>
