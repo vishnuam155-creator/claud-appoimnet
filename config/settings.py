@@ -160,3 +160,36 @@ VOICE_LANGUAGE_DEFAULT = 'en-IN'  # Default language for voice interactions
 VOICE_SUPPORTED_LANGUAGES = ['en-IN', 'hi-IN', 'en-US']  # Supported languages
 VOICE_SPEAKING_RATE = 0.95  # Speaking rate for TTS (0.5 to 2.0)
 VOICE_ENABLE_AUTO_SPEAK = False  # Auto-speak bot responses (can be toggled by user)
+
+# Voice Provider Configuration
+# Options: 'google', 'ai4bharat', 'browser'
+VOICE_PROVIDER = os.getenv('VOICE_PROVIDER', 'browser')
+
+# AI4Bharat Voice Service Configuration
+# AI4Bharat provides Indian language support for STT and TTS
+AI4BHARAT_API_KEY = os.getenv('AI4BHARAT_API_KEY', '')
+AI4BHARAT_ASR_ENDPOINT = os.getenv('AI4BHARAT_ASR_ENDPOINT',
+                                    'https://api.ai4bharat.org/asr/v1/recognize')
+AI4BHARAT_TTS_ENDPOINT = os.getenv('AI4BHARAT_TTS_ENDPOINT',
+                                    'https://api.ai4bharat.org/tts/v1/synthesize')
+AI4BHARAT_LANG_DETECT_ENDPOINT = os.getenv('AI4BHARAT_LANG_DETECT_ENDPOINT',
+                                           'https://api.ai4bharat.org/language/detect')
+AI4BHARAT_DEFAULT_LANGUAGE = os.getenv('AI4BHARAT_DEFAULT_LANGUAGE', 'hi')  # Hindi default
+AI4BHARAT_VOICE_GENDER = os.getenv('AI4BHARAT_VOICE_GENDER', 'female')
+AI4BHARAT_SPEAKING_RATE = float(os.getenv('AI4BHARAT_SPEAKING_RATE', '1.0'))
+
+# Asterisk Telephony Configuration
+# Enable Asterisk integration for phone call handling
+ASTERISK_ENABLED = os.getenv('ASTERISK_ENABLED', 'False') == 'True'
+
+# Asterisk ARI (REST Interface) Configuration
+ASTERISK_ARI_URL = os.getenv('ASTERISK_ARI_URL', 'http://localhost:8088/ari')
+ASTERISK_ARI_USERNAME = os.getenv('ASTERISK_ARI_USERNAME', 'asterisk')
+ASTERISK_ARI_PASSWORD = os.getenv('ASTERISK_ARI_PASSWORD', 'asterisk')
+ASTERISK_ARI_APP = os.getenv('ASTERISK_ARI_APP', 'voicebot')
+
+# Asterisk File Paths
+ASTERISK_RECORDING_PATH = os.getenv('ASTERISK_RECORDING_PATH',
+                                    '/var/spool/asterisk/recording')
+ASTERISK_AUDIO_PATH = os.getenv('ASTERISK_AUDIO_PATH',
+                                '/var/lib/asterisk/sounds/custom')

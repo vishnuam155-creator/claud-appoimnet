@@ -729,6 +729,10 @@
                     <span class="btn-icon">⏹️</span>
                     <span>Stop</span>
                 </button>
+                <button class="btn btn-settings" id="settingsBtn" onclick="openVoiceSettings()">
+                    <span class="btn-icon">⚙️</span>
+                    <span>Settings</span>
+                </button>
             </div>
         </div>
 
@@ -796,6 +800,216 @@
             </div>
         </div>
     </div>
+
+    <!-- Voice Settings Modal -->
+    <div class="modal" id="voiceSettingsModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Voice Provider Settings</h2>
+                <button class="modal-close" onclick="closeVoiceSettings()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <label class="settings-label">Voice Provider:</label>
+                    <select id="voiceProvider" class="settings-select" onchange="onVoiceProviderChange()">
+                        <option value="browser">Browser Speech API (Free)</option>
+                        <option value="google">Google Cloud Speech</option>
+                        <option value="ai4bharat">AI4Bharat (Indian Languages)</option>
+                    </select>
+                    <p class="settings-help" id="providerHelp">Built-in browser speech recognition</p>
+                </div>
+
+                <div class="settings-section" id="languageSection">
+                    <label class="settings-label">Language:</label>
+                    <select id="voiceLanguage" class="settings-select">
+                        <option value="en-IN">English (India)</option>
+                        <option value="hi-IN">Hindi (हिन्दी)</option>
+                        <option value="en-US">English (US)</option>
+                    </select>
+                </div>
+
+                <div class="settings-section">
+                    <label class="settings-label">
+                        <input type="checkbox" id="autoSpeak" checked>
+                        Auto-play bot responses
+                    </label>
+                </div>
+
+                <div class="settings-status" id="settingsStatus"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="testVoiceProvider()">Test Connection</button>
+                <button class="btn btn-primary" onclick="saveVoiceSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 0;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 24px;
+            color: var(--dark);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 32px;
+            color: var(--text-light);
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: var(--light);
+            color: var(--danger);
+        }
+
+        .modal-body {
+            padding: 24px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .settings-section {
+            margin-bottom: 24px;
+        }
+
+        .settings-label {
+            display: block;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .settings-select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 16px;
+            color: var(--dark);
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .settings-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .settings-help {
+            margin-top: 8px;
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        .settings-status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .settings-status.success {
+            background: #d1fae5;
+            color: #065f46;
+            display: block;
+        }
+
+        .settings-status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            display: block;
+        }
+
+        .btn-settings {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .btn-settings:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--text-light);
+        }
+
+        .btn-secondary:hover {
+            background: var(--text);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.4);
+        }
+    </style>
 
     <script>
         // ==========================================
@@ -1293,6 +1507,181 @@
             if (sessionTimer) {
                 clearInterval(sessionTimer);
                 sessionTimer = null;
+            }
+        }
+
+        // ==========================================
+        // Voice Provider Settings
+        // ==========================================
+        let currentVoiceProvider = 'browser';
+        let currentLanguage = 'en-IN';
+
+        function openVoiceSettings() {
+            document.getElementById('voiceSettingsModal').style.display = 'flex';
+            loadCurrentSettings();
+        }
+
+        function closeVoiceSettings() {
+            document.getElementById('voiceSettingsModal').style.display = 'none';
+        }
+
+        function loadCurrentSettings() {
+            // Load from session storage or defaults
+            currentVoiceProvider = sessionStorage.getItem('voiceProvider') || 'browser';
+            currentLanguage = sessionStorage.getItem('voiceLanguage') || 'en-IN';
+
+            document.getElementById('voiceProvider').value = currentVoiceProvider;
+            document.getElementById('voiceLanguage').value = currentLanguage;
+
+            onVoiceProviderChange();
+        }
+
+        function onVoiceProviderChange() {
+            const provider = document.getElementById('voiceProvider').value;
+            const helpText = document.getElementById('providerHelp');
+
+            const descriptions = {
+                'browser': 'Built-in browser speech recognition (Free, works offline)',
+                'google': 'Google Cloud Speech API (Requires API key configuration)',
+                'ai4bharat': 'AI4Bharat models for Indian languages (Requires API key)'
+            };
+
+            helpText.textContent = descriptions[provider] || '';
+
+            // Update language options based on provider
+            updateLanguageOptions(provider);
+        }
+
+        function updateLanguageOptions(provider) {
+            const languageSelect = document.getElementById('voiceLanguage');
+
+            // Clear existing options
+            languageSelect.innerHTML = '';
+
+            if (provider === 'ai4bharat') {
+                const languages = [
+                    { code: 'en', name: 'English' },
+                    { code: 'hi', name: 'Hindi (हिन्दी)' },
+                    { code: 'ta', name: 'Tamil (தமிழ்)' },
+                    { code: 'te', name: 'Telugu (తెలుగు)' },
+                    { code: 'bn', name: 'Bengali (বাংলা)' },
+                    { code: 'mr', name: 'Marathi (मराठी)' },
+                    { code: 'gu', name: 'Gujarati (ગુજરાતી)' },
+                    { code: 'kn', name: 'Kannada (ಕನ್ನಡ)' },
+                    { code: 'ml', name: 'Malayalam (മലയാളം)' },
+                    { code: 'pa', name: 'Punjabi (ਪੰਜਾਬੀ)' }
+                ];
+
+                languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang.code;
+                    option.textContent = lang.name;
+                    languageSelect.appendChild(option);
+                });
+            } else {
+                const languages = [
+                    { code: 'en-IN', name: 'English (India)' },
+                    { code: 'hi-IN', name: 'Hindi (हिन्दी)' },
+                    { code: 'en-US', name: 'English (US)' }
+                ];
+
+                languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang.code;
+                    option.textContent = lang.name;
+                    languageSelect.appendChild(option);
+                });
+            }
+        }
+
+        async function testVoiceProvider() {
+            const provider = document.getElementById('voiceProvider').value;
+            const statusDiv = document.getElementById('settingsStatus');
+
+            statusDiv.className = 'settings-status';
+            statusDiv.textContent = 'Testing connection...';
+            statusDiv.style.display = 'block';
+
+            try {
+                const response = await fetch('/voicebot/api/voice-provider/test/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: provider })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.tests && data.tests.length > 0) {
+                    const allSuccess = data.tests.every(test => test.success);
+
+                    if (allSuccess) {
+                        statusDiv.className = 'settings-status success';
+                        statusDiv.textContent = '✓ Connection test successful!';
+                    } else {
+                        statusDiv.className = 'settings-status error';
+                        const errors = data.tests
+                            .filter(test => !test.success)
+                            .map(test => test.error || test.message)
+                            .join(', ');
+                        statusDiv.textContent = `✗ Test failed: ${errors}`;
+                    }
+                } else {
+                    statusDiv.className = 'settings-status success';
+                    statusDiv.textContent = '✓ Provider is available';
+                }
+            } catch (error) {
+                statusDiv.className = 'settings-status error';
+                statusDiv.textContent = `✗ Test failed: ${error.message}`;
+            }
+        }
+
+        async function saveVoiceSettings() {
+            const provider = document.getElementById('voiceProvider').value;
+            const language = document.getElementById('voiceLanguage').value;
+            const autoSpeak = document.getElementById('autoSpeak').checked;
+            const statusDiv = document.getElementById('settingsStatus');
+
+            statusDiv.className = 'settings-status';
+            statusDiv.textContent = 'Saving settings...';
+            statusDiv.style.display = 'block';
+
+            try {
+                // Save to backend
+                const response = await fetch('/voicebot/api/voice-provider/config/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: provider })
+                });
+
+                if (response.ok) {
+                    // Save to session storage
+                    sessionStorage.setItem('voiceProvider', provider);
+                    sessionStorage.setItem('voiceLanguage', language);
+                    sessionStorage.setItem('autoSpeak', autoSpeak);
+
+                    // Update global variables
+                    currentVoiceProvider = provider;
+                    currentLanguage = language;
+
+                    // Update speech recognition language if browser provider
+                    if (provider === 'browser' && recognition) {
+                        recognition.lang = language;
+                    }
+
+                    statusDiv.className = 'settings-status success';
+                    statusDiv.textContent = '✓ Settings saved successfully!';
+
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        closeVoiceSettings();
+                    }, 2000);
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to save settings');
+                }
+            } catch (error) {
+                statusDiv.className = 'settings-status error';
+                statusDiv.textContent = `✗ Failed to save: ${error.message}`;
             }
         }
 
