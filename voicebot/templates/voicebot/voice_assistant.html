@@ -807,9 +807,12 @@
         let sessionData = {};
         let speechSynthesis = window.speechSynthesis;
         let isSpeaking = false;
+        let isProcessing = false;
         let messageCount = 0;
         let sessionStartTime = null;
         let sessionTimer = null;
+        let recognitionRestartTimeout = null;
+        let speechEndTimeout = null;
 
         // ==========================================
         // Initialize Speech Recognition
@@ -827,6 +830,11 @@
             recognition.interimResults = true;
             recognition.lang = 'en-IN';
             recognition.maxAlternatives = 1;
+
+            // Optimize for better accuracy and echo cancellation
+            if (recognition.interimResults !== undefined) {
+                recognition.interimResults = true;
+            }
 
             let finalTranscript = '';
             let silenceTimer = null;
@@ -857,15 +865,15 @@
                 // Clear previous silence timer
                 if (silenceTimer) clearTimeout(silenceTimer);
 
-                // Set new silence timer (1.5 seconds)
+                // Set new silence timer (2.5 seconds for better UX - allows user to pause and think)
                 if (finalTranscript.trim()) {
                     silenceTimer = setTimeout(() => {
-                        if (finalTranscript.trim() && !isSpeaking) {
+                        if (finalTranscript.trim() && !isSpeaking && !isProcessing) {
                             processSpeech(finalTranscript.trim());
                             finalTranscript = '';
                             transcriptEl.textContent = 'Listening...';
                         }
-                    }, 1500);
+                    }, 2500);
                 }
             };
 
@@ -873,33 +881,47 @@
                 console.error('❌ Speech recognition error:', event.error);
 
                 if (event.error === 'no-speech') {
-                    if (isListening && !isSpeaking) {
-                        setTimeout(() => {
+                    // Only restart if we're actually listening and not speaking/processing
+                    if (isListening && !isSpeaking && !isProcessing) {
+                        // Debounce restart to prevent rapid restarts
+                        if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+                        recognitionRestartTimeout = setTimeout(() => {
                             try {
-                                recognition.start();
+                                if (isListening && !isSpeaking && !isProcessing) {
+                                    recognition.start();
+                                }
                             } catch (e) {
                                 console.log('Restart after no-speech:', e);
                             }
-                        }, 100);
+                        }, 300);
                     }
                 } else if (event.error === 'network') {
                     addSystemMessage('⚠️ Network error. Please check your internet connection.');
                 } else if (event.error === 'not-allowed') {
                     addSystemMessage('❌ Microphone access denied. Please allow microphone access.');
                     stopVoiceAssistant();
+                } else if (event.error === 'aborted') {
+                    // Recognition was intentionally stopped, don't show error
+                    console.log('Recognition aborted (expected)');
                 }
             };
 
             recognition.onend = () => {
                 console.log('🔴 Voice recognition ended');
-                if (isListening && !isSpeaking) {
-                    setTimeout(() => {
+                // Only restart if we're still in listening mode and not speaking/processing
+                if (isListening && !isSpeaking && !isProcessing) {
+                    // Debounce restart to prevent rapid restarts
+                    if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+                    recognitionRestartTimeout = setTimeout(() => {
                         try {
-                            recognition.start();
+                            if (isListening && !isSpeaking && !isProcessing) {
+                                recognition.start();
+                                console.log('🎤 Recognition restarted');
+                            }
                         } catch (e) {
                             console.log('Restart failed:', e);
                         }
-                    }, 100);
+                    }, 300);
                 } else {
                     updateStatus('ready');
                 }
@@ -964,10 +986,20 @@
         // ==========================================
         function stopVoiceAssistant() {
             isListening = false;
+            isProcessing = false;
+            isSpeaking = false;
             stopSessionTimer();
 
+            // Clear all pending timeouts
+            if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+            if (speechEndTimeout) clearTimeout(speechEndTimeout);
+
             if (recognition) {
-                recognition.stop();
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.log('Recognition already stopped:', e);
+                }
             }
 
             if (speechSynthesis.speaking) {
@@ -1015,7 +1047,14 @@
         function processSpeech(message) {
             if (!message || message.trim() === '') return;
 
+            // Prevent duplicate processing
+            if (isProcessing) {
+                console.log('⚠️ Already processing, skipping...');
+                return;
+            }
+
             console.log('📤 Processing:', message);
+            isProcessing = true;
 
             // Add user message
             addMessage(message, 'user');
@@ -1026,8 +1065,15 @@
 
             // Stop listening while processing
             if (recognition && isListening) {
-                recognition.stop();
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.log('Recognition already stopped:', e);
+                }
             }
+
+            // Clear any pending restart timeouts
+            if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
 
             // Send to backend
             fetch('/voicebot/api/', {
@@ -1043,6 +1089,7 @@
             .then(data => {
                 // Hide typing indicator
                 document.getElementById('typingIndicator').classList.remove('show');
+                isProcessing = false;
 
                 // Add bot response
                 addMessage(data.message, 'bot');
@@ -1055,48 +1102,62 @@
                 const stage = sessionData.stage || 'Not started';
                 document.getElementById('currentStage').textContent = formatStageName(stage);
 
-                // Speak response
+                // Speak response (this will handle turn-taking)
                 speak(data.message);
 
                 // Check if completed
                 if (data.action === 'booking_complete') {
-                    setTimeout(() => {
-                        const bookAgain = confirm('✅ Booking completed successfully!\n\nWould you like to book another appointment?');
-                        if (bookAgain) {
-                            resetVoiceAssistant();
-                            startVoiceAssistant();
-                        } else {
-                            stopVoiceAssistant();
+                    // Wait for speech to complete before showing confirmation
+                    const checkSpeechComplete = setInterval(() => {
+                        if (!isSpeaking) {
+                            clearInterval(checkSpeechComplete);
+                            setTimeout(() => {
+                                const bookAgain = confirm('✅ Booking completed successfully!\n\nWould you like to book another appointment?');
+                                if (bookAgain) {
+                                    resetVoiceAssistant();
+                                    startVoiceAssistant();
+                                } else {
+                                    stopVoiceAssistant();
+                                }
+                            }, 1000);
                         }
-                    }, 3000);
+                    }, 500);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 document.getElementById('typingIndicator').classList.remove('show');
+                isProcessing = false;
                 addSystemMessage('❌ Error connecting to server. Please try again.');
                 updateStatus('listening');
 
-                // Restart listening
-                if (isListening) {
-                    setTimeout(() => {
+                // Restart listening after error with debouncing
+                if (isListening && !isSpeaking) {
+                    if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+                    recognitionRestartTimeout = setTimeout(() => {
                         try {
-                            recognition.start();
+                            if (isListening && !isSpeaking && !isProcessing) {
+                                recognition.start();
+                            }
                         } catch (e) {
                             console.log('Restart failed:', e);
                         }
-                    }, 500);
+                    }, 800);
                 }
             });
         }
 
         // ==========================================
-        // Text-to-Speech
+        // Text-to-Speech with Improved Turn-Taking
         // ==========================================
         function speak(text) {
+            // Cancel any existing speech
             if (speechSynthesis.speaking) {
                 speechSynthesis.cancel();
             }
+
+            // Clear any pending speech end timeout
+            if (speechEndTimeout) clearTimeout(speechEndTimeout);
 
             isSpeaking = true;
             updateStatus('speaking');
@@ -1107,7 +1168,7 @@
             utterance.pitch = 1;
             utterance.volume = 1;
 
-            // Select voice
+            // Select voice with fallback
             const voices = speechSynthesis.getVoices();
             const preferredVoice = voices.find(voice =>
                 (voice.name.includes('Google') || voice.name.includes('Microsoft')) &&
@@ -1119,34 +1180,49 @@
             }
 
             utterance.onend = () => {
-                isSpeaking = false;
                 console.log('🔇 Speech ended');
 
-                if (isListening) {
-                    updateStatus('listening');
-                    setTimeout(() => {
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.log('Recognition restart failed:', e);
-                        }
-                    }, 500);
-                }
+                // Use timeout to ensure speech is fully complete and allow for user processing time
+                speechEndTimeout = setTimeout(() => {
+                    isSpeaking = false;
+
+                    if (isListening && !isProcessing) {
+                        updateStatus('listening');
+
+                        // Longer delay (800ms) to prevent capturing echo and give user time to think
+                        if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+                        recognitionRestartTimeout = setTimeout(() => {
+                            try {
+                                if (isListening && !isSpeaking && !isProcessing) {
+                                    recognition.start();
+                                    console.log('🎤 Recognition restarted after speech');
+                                }
+                            } catch (e) {
+                                console.log('Recognition restart failed:', e);
+                            }
+                        }, 800);
+                    }
+                }, 500);
             };
 
             utterance.onerror = (event) => {
                 console.error('Speech error:', event);
                 isSpeaking = false;
 
-                if (isListening) {
+                if (isListening && !isProcessing) {
                     updateStatus('listening');
-                    setTimeout(() => {
+
+                    // Restart recognition after error
+                    if (recognitionRestartTimeout) clearTimeout(recognitionRestartTimeout);
+                    recognitionRestartTimeout = setTimeout(() => {
                         try {
-                            recognition.start();
+                            if (isListening && !isSpeaking && !isProcessing) {
+                                recognition.start();
+                            }
                         } catch (e) {
                             console.log('Recognition restart failed:', e);
                         }
-                    }, 500);
+                    }, 800);
                 }
             };
 

@@ -68,6 +68,8 @@ class VoiceAssistantManager:
             dict: Response with message, stage, data, action
         """
         current_stage = session_data.get('stage', 'greeting')
+        print(f"🎤 Processing voice message | Stage: {current_stage} | Message: {message[:100] if message else 'None'}")
+        print(f"📊 Session data keys: {list(session_data.keys())}")
 
         # Check for symptom changes after doctor selection
         if current_stage in ['date_selection', 'time_selection', 'phone_collection'] and message:
@@ -719,13 +721,28 @@ class VoiceAssistantManager:
         intent = self._detect_confirmation_intent(message)
 
         if intent == 'confirm':
+            # Validate required data before creating appointment
+            required_fields = ['patient_name', 'doctor_id', 'appointment_date', 'appointment_time', 'phone']
+            missing_fields = [field for field in required_fields if not session_data.get(field)]
+
+            if missing_fields:
+                print(f"❌ Missing required fields for booking: {missing_fields}")
+                return {
+                    'message': f"I'm sorry, but I need some more information before I can complete your booking. Let me start over to make sure we have everything.",
+                    'stage': 'greeting',
+                    'data': {},
+                    'action': 'restart'
+                }
+
             # Create appointment
             try:
+                print(f"📝 Creating appointment with data: {session_data}")
                 appointment = self._create_appointment(session_data)
 
                 if appointment:
                     session_data['stage'] = 'completed'
                     session_data['appointment_id'] = appointment.id
+                    session_data['booking_confirmed'] = True
 
                     doctor = Doctor.objects.get(id=session_data['doctor_id'])
                     date_str = datetime.fromisoformat(session_data['appointment_date']).strftime('%B %d, %Y')
@@ -741,6 +758,8 @@ class VoiceAssistantManager:
                         clinic_name=CLINIC_NAME
                     )
 
+                    print(f"✅ Appointment created successfully! ID: {appointment.id}")
+
                     return {
                         'message': success_msg,
                         'stage': 'completed',
@@ -748,17 +767,21 @@ class VoiceAssistantManager:
                         'action': 'booking_complete'
                     }
                 else:
+                    print("❌ Appointment creation returned None")
                     return {
-                        'message': STAGE_PROMPTS['confirmation']['booking_error'],
-                        'stage': 'confirmation',
+                        'message': "I'm sorry, there was an issue creating your appointment. The time slot may have been taken. Would you like to try a different time?",
+                        'stage': 'time_selection',
                         'data': session_data,
                         'action': 'error'
                     }
 
             except Exception as e:
-                print(f"Error creating appointment: {e}")
+                print(f"❌ Error creating appointment: {e}")
+                import traceback
+                traceback.print_exc()
+
                 return {
-                    'message': STAGE_PROMPTS['confirmation']['booking_error'],
+                    'message': "I apologize, but there was a technical issue completing your booking. Please try again or contact us directly.",
                     'stage': 'confirmation',
                     'data': session_data,
                     'action': 'error'
@@ -1470,14 +1493,56 @@ Phone:"""
             return ", ".join(available[:-1]) + f", and {available[-1]}"
 
     def _create_appointment(self, session_data):
-        """Create appointment in database"""
+        """Create appointment in database with improved validation and error handling"""
         try:
-            doctor = Doctor.objects.get(id=session_data['doctor_id'])
-            appointment_date = datetime.fromisoformat(session_data['appointment_date']).date()
+            # Validate doctor exists
+            try:
+                doctor = Doctor.objects.get(id=session_data['doctor_id'], is_active=True)
+            except Doctor.DoesNotExist:
+                print(f"❌ Doctor not found with ID: {session_data['doctor_id']}")
+                return None
 
-            time_str = session_data['appointment_time']
-            appointment_time = datetime.strptime(time_str, '%I:%M %p').time()
+            # Parse and validate date
+            try:
+                appointment_date = datetime.fromisoformat(session_data['appointment_date']).date()
+            except (ValueError, KeyError) as e:
+                print(f"❌ Invalid appointment date: {e}")
+                return None
 
+            # Validate date is not in the past
+            if appointment_date < timezone.now().date():
+                print(f"❌ Appointment date is in the past: {appointment_date}")
+                return None
+
+            # Parse and validate time
+            try:
+                time_str = session_data['appointment_time']
+                # Try multiple time formats
+                for time_format in ['%I:%M %p', '%H:%M', '%I:%M%p']:
+                    try:
+                        appointment_time = datetime.strptime(time_str, time_format).time()
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    raise ValueError(f"Could not parse time: {time_str}")
+            except Exception as e:
+                print(f"❌ Invalid appointment time: {e}")
+                return None
+
+            # Check if slot is still available (double-check to prevent double booking)
+            existing = Appointment.objects.filter(
+                doctor=doctor,
+                appointment_date=appointment_date,
+                appointment_time=appointment_time,
+                status__in=['pending', 'confirmed']
+            ).exists()
+
+            if existing:
+                print(f"❌ Time slot already booked: {appointment_date} {time_str}")
+                return None
+
+            # Create appointment
             appointment = Appointment.objects.create(
                 doctor=doctor,
                 patient_name=session_data['patient_name'],
@@ -1485,21 +1550,32 @@ Phone:"""
                 appointment_date=appointment_date,
                 appointment_time=appointment_time,
                 status='confirmed',
-                booking_method='voice_assistant'
+                booking_method='voice_assistant',
+                notes=session_data.get('symptoms', '')
             )
 
-            # Send SMS
+            print(f"✅ Appointment created: ID={appointment.id}, Doctor={doctor.name}, Date={appointment_date}, Time={time_str}")
+
+            # Send SMS (non-blocking, failure won't affect booking)
             try:
                 from twilio_service import send_sms
-                send_sms(
-                    to=session_data['phone'],
-                    message=f"Appointment confirmed! Dr. {doctor.name} on {appointment_date.strftime('%B %d, %Y')} at {time_str}. ID: {appointment.id}"
+                confirmation_msg = (
+                    f"✅ Appointment Confirmed!\n"
+                    f"Doctor: Dr. {doctor.name}\n"
+                    f"Date: {appointment_date.strftime('%B %d, %Y')}\n"
+                    f"Time: {time_str}\n"
+                    f"Booking ID: APT{appointment.id:06d}\n"
+                    f"See you soon!"
                 )
+                send_sms(to=session_data['phone'], message=confirmation_msg)
+                print(f"📱 SMS sent to {session_data['phone']}")
             except Exception as e:
-                print(f"SMS sending failed: {e}")
+                print(f"⚠️ SMS sending failed (non-critical): {e}")
 
             return appointment
 
         except Exception as e:
-            print(f"Error creating appointment: {e}")
+            print(f"❌ Error creating appointment: {e}")
+            import traceback
+            traceback.print_exc()
             return None
