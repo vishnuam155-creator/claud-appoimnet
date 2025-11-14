@@ -10,6 +10,8 @@ app_name = 'patient_booking'
 urlpatterns = [
     # Chatbot API
     path('api/chatbot/', views.ChatbotAPIView.as_view(), name='chatbot_api'),
+    path('api/chatbot/reset/', views.chatbot_reset_session, name='chatbot_reset'),
+    path('api/chatbot/debug/<str:session_id>/', views.chatbot_debug_session, name='chatbot_debug'),
 
     # Voice API
     path('api/voice/', views.VoiceAPIView.as_view(), name='voice_api'),
