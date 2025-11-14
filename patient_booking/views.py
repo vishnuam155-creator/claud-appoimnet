@@ -1,4 +1,7 @@
-from django.shortcuts import render
+"""
+REST API views for Patient Booking
+All template-based views have been removed - this is a pure REST API module
+"""
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views import View
@@ -9,11 +12,6 @@ import base64
 from chatbot.conversation_manager import ConversationManager
 from chatbot.voice_service import voice_service
 from chatbot.voice_assistant_manager import VoiceAssistantManager
-
-
-def chatbot_page(request):
-    """Render the chatbot interface"""
-    return render(request, 'patient_booking/chatbot.html')
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -140,16 +138,6 @@ class VoiceAPIView(View):
             'actions': ['transcribe', 'synthesize', 'voice_guidance'],
             'supported_languages': ['en-IN', 'hi-IN', 'en-US']
         })
-
-
-def home(request):
-    """Home page"""
-    return render(request, 'patient_booking/home.html')
-
-
-def voice_assistant_page(request):
-    """Render the voice assistant interface"""
-    return render(request, 'patient_booking/voice_assistant.html')
 
 
 @method_decorator(csrf_exempt, name='dispatch')

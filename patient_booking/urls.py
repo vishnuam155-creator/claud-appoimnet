@@ -1,13 +1,19 @@
+"""
+REST API URL Configuration for Patient Booking
+All template-based routes have been removed - pure API endpoints only
+"""
 from django.urls import path
 from . import views
 
 app_name = 'patient_booking'
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('chatbot/', views.chatbot_page, name='chatbot'),
-    path('voice-assistant/', views.voice_assistant_page, name='voice_assistant'),
+    # Chatbot API
     path('api/chatbot/', views.ChatbotAPIView.as_view(), name='chatbot_api'),
+
+    # Voice API
     path('api/voice/', views.VoiceAPIView.as_view(), name='voice_api'),
+
+    # Voice Assistant API
     path('api/voice-assistant/', views.VoiceAssistantAPIView.as_view(), name='voice_assistant_api'),
 ]

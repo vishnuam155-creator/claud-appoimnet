@@ -1,13 +1,22 @@
+"""
+REST API URL Configuration for Admin Panel
+All template-based routes have been removed - pure API endpoints only
+"""
 from django.urls import path
-from . import views
+from . import api_views
 
 app_name = 'admin_panel'
 
 urlpatterns = [
-    path('', views.dashboard, name='dashboard'),
-    path('appointments/', views.appointment_list, name='appointment_list'),
-    path('appointments/<str:booking_id>/', views.appointment_detail, name='appointment_detail'),
-    path('appointments/<str:booking_id>/update/', views.update_appointment_status, name='update_status'),
-    path('calendar/', views.calendar_view, name='calendar'),
-    path('api/appointments-by-date/', views.get_appointments_by_date, name='appointments_by_date'),
+    # Dashboard statistics
+    path('api/dashboard/', api_views.DashboardStatsAPIView.as_view(), name='dashboard_stats'),
+
+    # Appointment management
+    path('api/appointments/', api_views.AppointmentListAPIView.as_view(), name='appointment_list'),
+    path('api/appointments/<str:booking_id>/', api_views.AppointmentDetailAPIView.as_view(), name='appointment_detail'),
+    path('api/appointments/<str:booking_id>/update/', api_views.AppointmentUpdateStatusAPIView.as_view(), name='update_status'),
+
+    # Calendar endpoints
+    path('api/calendar/', api_views.CalendarDataAPIView.as_view(), name='calendar_data'),
+    path('api/appointments-by-date/', api_views.AppointmentsByDateAPIView.as_view(), name='appointments_by_date'),
 ]
