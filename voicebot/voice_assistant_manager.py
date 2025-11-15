@@ -143,10 +143,11 @@ class VoiceAssistantManager:
                 session_data['patient_name'] = name_extracted
                 session_data['stage'] = 'doctor_selection'
 
-                greeting_msg = STAGE_PROMPTS['greeting']['with_name'].format(
-                    name=name_extracted,
-                    assistant_name=self.ASSISTANT_NAME,
-                    clinic_name=CLINIC_NAME
+                # Use Gemini AI to generate natural greeting with name
+                greeting_msg = self._generate_ai_response(
+                    context=f"Patient just introduced themselves. Their name is {name_extracted}.",
+                    intent="Greet them warmly and ask how you can help with their appointment.",
+                    fallback=f"Nice to meet you, {name_extracted}! How can I help you today? Do you have any symptoms you'd like to discuss, or do you know which doctor you'd like to see?"
                 )
 
                 return {
@@ -156,10 +157,12 @@ class VoiceAssistantManager:
                     'action': 'continue'
                 }
 
-        # Standard greeting - use configured prompt
+        # Standard greeting - use AI to generate natural welcome
         session_data['stage'] = 'patient_name'
-        greeting_msg = STAGE_PROMPTS['greeting']['initial'].format(
-            clinic_name=CLINIC_NAME
+        greeting_msg = self._generate_ai_response(
+            context="New patient just connected for appointment booking.",
+            intent="Give a warm welcome and ask for their name in a friendly, conversational way.",
+            fallback=f"Hello! Welcome to {CLINIC_NAME}. I'm {self.ASSISTANT_NAME}, your AI assistant. I'm here to help you book an appointment. May I have your name, please?"
         )
 
         return {
@@ -249,6 +252,42 @@ class VoiceAssistantManager:
 
                 return {
                     'message': f"Great choice! I'll book you with Dr. {selected_doctor['name']}. They have availability {days_text} on {next_date_formatted}. Would you like to book for that date, or would you prefer a different date?",
+                    'stage': 'date_selection',
+                    'data': session_data,
+                    'action': 'continue'
+                }
+
+        # Check if user is confirming a suggested doctor (from symptom analysis)
+        if session_data.get('suggested_doctors'):
+            # Try to confirm the suggested doctor
+            confirmed_doctor = self._confirm_suggested_doctor(message, session_data)
+
+            if confirmed_doctor:
+                # Doctor confirmed, move to date selection
+                session_data['doctor_id'] = confirmed_doctor.id
+                session_data['doctor_name'] = confirmed_doctor.name
+                session_data['stage'] = 'date_selection'
+                session_data.pop('suggested_doctors', None)  # Clear suggestions
+
+                # Use Gemini AI to generate a natural confirmation response
+                try:
+                    model = genai.GenerativeModel(self.gemini_model)
+                    prompt = f"""Generate a natural, friendly confirmation message for a patient who just confirmed booking with {confirmed_doctor.name}.
+
+Then ask about their preferred date for the appointment.
+
+Keep it conversational and warm. Maximum 2 sentences.
+
+Example: "Perfect! I'll book you with Dr. {confirmed_doctor.name}. What date works best for you? You can say tomorrow, a specific date, or a day of the week."
+"""
+                    response = model.generate_content(prompt)
+                    ai_message = response.text.strip()
+                except Exception as e:
+                    print(f"AI response generation error: {e}")
+                    ai_message = f"Perfect! I'll book you with Dr. {confirmed_doctor.name}. What date would work best for you? You can say tomorrow, a specific date, or a day of the week."
+
+                return {
+                    'message': ai_message,
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -790,6 +829,49 @@ class VoiceAssistantManager:
             }
 
     # ========== AI-Powered Helper Methods ==========
+
+    def _generate_ai_response(self, context, intent, fallback="I'm here to help you.", max_words=50):
+        """
+        Generate natural, context-aware responses using Gemini AI
+
+        Args:
+            context: Current conversation context
+            intent: What the AI should accomplish with this response
+            fallback: Fallback message if AI generation fails
+            max_words: Maximum words for the response
+
+        Returns:
+            AI-generated natural response string
+        """
+        try:
+            model = genai.GenerativeModel(self.gemini_model)
+            prompt = f"""You are MediBot, a warm and friendly AI medical receptionist.
+
+Context: {context}
+
+Task: {intent}
+
+Important guidelines:
+- Be warm, friendly, and professional
+- Keep response under {max_words} words
+- Sound natural and conversational (like talking to a real person)
+- Don't use formal or robotic language
+- Make the patient feel comfortable and valued
+- Use contractions (I'm, you're, etc.) for natural speech
+
+Generate a natural, friendly response:"""
+
+            response = model.generate_content(prompt)
+            ai_response = response.text.strip()
+
+            # Remove quotes if AI added them
+            ai_response = ai_response.replace('"', '').replace("'", '').strip()
+
+            return ai_response
+
+        except Exception as e:
+            print(f"AI response generation error: {e}")
+            return fallback
 
     def _extract_name_with_ai(self, message):
         """Extract patient name using Gemini AI"""
