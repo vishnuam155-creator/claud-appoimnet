@@ -30,7 +30,24 @@ class VoiceAssistantAPIView(View):
     def post(self, request):
         """Process voice message and return AI-powered response"""
         try:
-            data = json.loads(request.body)
+            # Handle empty or invalid request body
+            if not request.body or request.body.strip() == b'':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Empty request body',
+                    'message': 'Please send a valid JSON request. Example: {"message": "hello", "session_id": "123"}'
+                }, status=400)
+
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                print(f"VoiceBot JSON decode error: {e}, Body: {request.body[:100]}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid JSON format',
+                    'message': 'Please send valid JSON data. Example: {"message": "I have a headache", "session_id": "voice_123"}'
+                }, status=400)
+
             message = data.get('message', '')
             session_id = data.get('session_id')
             session_data = data.get('session_data', {})
