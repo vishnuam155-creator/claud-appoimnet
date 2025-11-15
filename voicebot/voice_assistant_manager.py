@@ -143,10 +143,11 @@ class VoiceAssistantManager:
                 session_data['patient_name'] = name_extracted
                 session_data['stage'] = 'doctor_selection'
 
-                greeting_msg = STAGE_PROMPTS['greeting']['with_name'].format(
-                    name=name_extracted,
-                    assistant_name=self.ASSISTANT_NAME,
-                    clinic_name=CLINIC_NAME
+                # Use Gemini AI to generate natural greeting with name
+                greeting_msg = self._generate_ai_response(
+                    context=f"Patient just introduced themselves. Their name is {name_extracted}.",
+                    intent="Greet them warmly and ask how you can help with their appointment.",
+                    fallback=f"Nice to meet you, {name_extracted}! How can I help you today? Do you have any symptoms you'd like to discuss, or do you know which doctor you'd like to see?"
                 )
 
                 return {
@@ -156,10 +157,12 @@ class VoiceAssistantManager:
                     'action': 'continue'
                 }
 
-        # Standard greeting - use configured prompt
+        # Standard greeting - use AI to generate natural welcome
         session_data['stage'] = 'patient_name'
-        greeting_msg = STAGE_PROMPTS['greeting']['initial'].format(
-            clinic_name=CLINIC_NAME
+        greeting_msg = self._generate_ai_response(
+            context="New patient just connected for appointment booking.",
+            intent="Give a warm welcome and ask for their name in a friendly, conversational way.",
+            fallback=f"Hello! Welcome to {CLINIC_NAME}. I'm {self.ASSISTANT_NAME}, your AI assistant. I'm here to help you book an appointment. May I have your name, please?"
         )
 
         return {
@@ -241,11 +244,50 @@ class VoiceAssistantManager:
                 session_data['stage'] = 'date_selection'
                 session_data.pop('alternative_doctors', None)
 
-                next_date_formatted = selected_doctor['next_available'].strftime('%B %d, %Y')
+                # Parse ISO date string for formatting
+                from datetime import datetime as dt
+                next_date_formatted = dt.fromisoformat(selected_doctor['next_available']).strftime('%B %d, %Y')
+
                 days_text = "tomorrow" if selected_doctor['days_away'] == 1 else f"in {selected_doctor['days_away']} days"
 
                 return {
                     'message': f"Great choice! I'll book you with Dr. {selected_doctor['name']}. They have availability {days_text} on {next_date_formatted}. Would you like to book for that date, or would you prefer a different date?",
+                    'stage': 'date_selection',
+                    'data': session_data,
+                    'action': 'continue'
+                }
+
+        # Check if user is confirming a suggested doctor (from symptom analysis)
+        if session_data.get('suggested_doctors'):
+            # Try to confirm the suggested doctor
+            confirmed_doctor = self._confirm_suggested_doctor(message, session_data)
+
+            if confirmed_doctor:
+                # Doctor confirmed, move to date selection
+                session_data['doctor_id'] = confirmed_doctor.id
+                session_data['doctor_name'] = confirmed_doctor.name
+                session_data['stage'] = 'date_selection'
+                session_data.pop('suggested_doctors', None)  # Clear suggestions
+
+                # Use Gemini AI to generate a natural confirmation response
+                try:
+                    model = genai.GenerativeModel(self.gemini_model)
+                    prompt = f"""Generate a natural, friendly confirmation message for a patient who just confirmed booking with {confirmed_doctor.name}.
+
+Then ask about their preferred date for the appointment.
+
+Keep it conversational and warm. Maximum 2 sentences.
+
+Example: "Perfect! I'll book you with Dr. {confirmed_doctor.name}. What date works best for you? You can say tomorrow, a specific date, or a day of the week."
+"""
+                    response = model.generate_content(prompt)
+                    ai_message = response.text.strip()
+                except Exception as e:
+                    print(f"AI response generation error: {e}")
+                    ai_message = f"Perfect! I'll book you with Dr. {confirmed_doctor.name}. What date would work best for you? You can say tomorrow, a specific date, or a day of the week."
+
+                return {
+                    'message': ai_message,
                     'stage': 'date_selection',
                     'data': session_data,
                     'action': 'continue'
@@ -364,7 +406,7 @@ class VoiceAssistantManager:
             suggested_doctor = doctors.first()
 
             session_data['suggested_doctors'] = [
-                {'id': doc.id, 'name': doc.name, 'fee': doc.consultation_fee}
+                {'id': doc.id, 'name': doc.name, 'fee': float(doc.consultation_fee) if doc.consultation_fee else 0}
                 for doc in doctors[:3]
             ]
             session_data['suggested_specialization'] = specialization.name
@@ -519,13 +561,19 @@ class VoiceAssistantManager:
 
                         for idx, alt in enumerate(alternatives[:2], 1):
                             days_text = "tomorrow" if alt['days_away'] == 1 else f"in {alt['days_away']} days"
-                            alt_msg += f"{idx}. Dr. {alt['name']} - Available {days_text} ({alt['next_available'].strftime('%B %d')}), "
+                            # Parse ISO date string for formatting
+                            from datetime import datetime as dt
+                            date_formatted = dt.fromisoformat(alt['next_available']).strftime('%B %d')
+                            alt_msg += f"{idx}. Dr. {alt['name']} - Available {days_text} ({date_formatted}), "
                             alt_msg += f"consultation fee {alt['fee']} rupees\n"
 
                         alt_msg += "\nWhich doctor would you like to book with? You can say the doctor's name or the number."
 
-                        # Store alternatives for easy selection
-                        session_data['alternative_doctors'] = alternatives
+                        # Store alternatives for easy selection (remove date objects for JSON serialization)
+                        session_data['alternative_doctors'] = [
+                            {k: v for k, v in alt.items() if k != 'next_available_date_obj'}
+                            for alt in alternatives
+                        ]
                         session_data['stage'] = 'doctor_selection'
 
                         return {
@@ -782,6 +830,49 @@ class VoiceAssistantManager:
 
     # ========== AI-Powered Helper Methods ==========
 
+    def _generate_ai_response(self, context, intent, fallback="I'm here to help you.", max_words=50):
+        """
+        Generate natural, context-aware responses using Gemini AI
+
+        Args:
+            context: Current conversation context
+            intent: What the AI should accomplish with this response
+            fallback: Fallback message if AI generation fails
+            max_words: Maximum words for the response
+
+        Returns:
+            AI-generated natural response string
+        """
+        try:
+            model = genai.GenerativeModel(self.gemini_model)
+            prompt = f"""You are MediBot, a warm and friendly AI medical receptionist.
+
+Context: {context}
+
+Task: {intent}
+
+Important guidelines:
+- Be warm, friendly, and professional
+- Keep response under {max_words} words
+- Sound natural and conversational (like talking to a real person)
+- Don't use formal or robotic language
+- Make the patient feel comfortable and valued
+- Use contractions (I'm, you're, etc.) for natural speech
+
+Generate a natural, friendly response:"""
+
+            response = model.generate_content(prompt)
+            ai_response = response.text.strip()
+
+            # Remove quotes if AI added them
+            ai_response = ai_response.replace('"', '').replace("'", '').strip()
+
+            return ai_response
+
+        except Exception as e:
+            print(f"AI response generation error: {e}")
+            return fallback
+
     def _extract_name_with_ai(self, message):
         """Extract patient name using Gemini AI"""
         try:
@@ -922,21 +1013,34 @@ Name:"""
         return best_match if best_score >= 70 else None
 
     def _confirm_suggested_doctor(self, message, session_data):
-        """Check if user is confirming a suggested doctor"""
-        message_lower = message.lower()
+        """Check if user is confirming a suggested doctor - enhanced for natural speech"""
+        message_lower = message.lower().strip()
 
-        # Check for confirmation words
-        if any(word in message_lower for word in ['yes', 'okay', 'ok', 'sure', 'book', 'confirm']):
+        # Comprehensive confirmation words for natural conversation
+        confirmation_phrases = [
+            'yes', 'yeah', 'yep', 'yup', 'okay', 'ok', 'k', 'sure', 'book', 'book it',
+            'confirm', 'sounds good', 'that works', 'good', 'fine', 'perfect',
+            'go ahead', 'please', 'vishnu', 'confirmed', 'definitely', 'absolutely',
+            'that\'s fine', 'looks good', 'proceed', 'right', 'correct'
+        ]
+
+        # Check for confirmation words (prioritize longer phrases)
+        confirmation_phrases_sorted = sorted(confirmation_phrases, key=len, reverse=True)
+        is_confirming = any(phrase in message_lower for phrase in confirmation_phrases_sorted)
+
+        if is_confirming:
             suggested_doctors = session_data.get('suggested_doctors', [])
             if suggested_doctors:
                 # Confirm first suggested doctor
                 doctor_id = suggested_doctors[0]['id']
                 return Doctor.objects.get(id=doctor_id)
 
-        # Check if they mentioned a doctor name from suggestions
+        # Check if they mentioned a specific doctor name from suggestions
         suggested_doctors = session_data.get('suggested_doctors', [])
         for doc_info in suggested_doctors:
-            if doc_info['name'].lower() in message_lower:
+            doctor_name_parts = doc_info['name'].lower().split()
+            # Match if any part of the doctor's name is in the message
+            if any(part in message_lower for part in doctor_name_parts if len(part) > 2):
                 return Doctor.objects.get(id=doc_info['id'])
 
         return None
@@ -1147,18 +1251,37 @@ Phone:"""
         return None
 
     def _detect_confirmation_intent(self, message):
-        """Detect if user is confirming or wanting to change"""
+        """Detect if user is confirming or wanting to change - enhanced for natural conversation"""
         message_lower = message.lower().strip()
 
-        confirm_words = ['yes', 'correct', 'confirm', 'book', 'okay', 'ok', 'sure', 'right', 'perfect']
-        change_words = ['no', 'change', 'wrong', 'different', 'modify', 'update', 'fix']
+        # Comprehensive confirmation phrases (common in natural speech)
+        confirm_words = [
+            'yes', 'yeah', 'yep', 'yup', 'correct', 'confirm', 'book', 'book it',
+            'okay', 'ok', 'k', 'sure', 'right', 'perfect', 'good', 'fine',
+            'sounds good', 'that works', 'that\'s fine', 'looks good', 'proceed',
+            'go ahead', 'continue', 'please', 'vishnu', 'confirmed', 'definitely',
+            'absolutely', 'exactly', 'great', 'awesome', 'nice', 'affirmative'
+        ]
 
-        if any(word in message_lower for word in confirm_words):
-            return 'confirm'
-        elif any(word in message_lower for word in change_words):
-            return 'change'
-        else:
-            return 'unclear'
+        # Change/rejection phrases
+        change_words = [
+            'no', 'nope', 'nah', 'change', 'wrong', 'different', 'modify',
+            'update', 'fix', 'wait', 'hold on', 'not right', 'incorrect',
+            'that\'s not', 'not correct', 'redo', 'restart', 'again'
+        ]
+
+        # Check for confirmation (prioritize longer phrases first)
+        confirm_words_sorted = sorted(confirm_words, key=len, reverse=True)
+        for word in confirm_words_sorted:
+            if word in message_lower:
+                return 'confirm'
+
+        # Check for change/rejection
+        for word in change_words:
+            if word in message_lower:
+                return 'change'
+
+        return 'unclear'
 
     # ========== Intent Handlers ==========
 
@@ -1398,9 +1521,10 @@ Phone:"""
                 doctors_with_availability.append({
                     'id': doctor.id,
                     'name': doctor.name,
-                    'fee': doctor.consultation_fee,
+                    'fee': float(doctor.consultation_fee) if doctor.consultation_fee else 0,
                     'specialization': doctor.specialization.name if doctor.specialization else '',
-                    'next_available': next_date,
+                    'next_available': next_date.isoformat() if next_date else None,
+                    'next_available_date_obj': next_date,  # Keep date object for internal use
                     'days_away': (next_date - date_from).days
                 })
 
