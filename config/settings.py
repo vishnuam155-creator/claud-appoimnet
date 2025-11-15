@@ -127,10 +127,30 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS settings
+# CORS settings - Allow frontend on different port
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://localhost:8080",  # Frontend application
+    "http://127.0.0.1:8080",  # Frontend application
+    "http://localhost:3000",  # React default port
+    "http://127.0.0.1:3000",  # React default port
+]
+
+# Allow credentials for session-based auth
+CORS_ALLOW_CREDENTIALS = True
+
+# Allow all headers for API requests
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
 # Claude AI Configuration

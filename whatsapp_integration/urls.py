@@ -1,5 +1,6 @@
 """
-URL Configuration for WhatsApp Integration
+REST API URL Configuration for WhatsApp Integration
+All template-based routes have been removed - pure API endpoints only
 """
 from django.urls import path
 from . import views
@@ -11,10 +12,7 @@ urlpatterns = [
     path('webhook/', views.whatsapp_webhook, name='webhook'),
     path('webhook/status/', views.whatsapp_status_webhook, name='status_webhook'),
 
-    # Web interface
-    path('chat/', views.whatsapp_chat_interface, name='chat_interface'),
-
-    # Admin dashboard
-    path('admin/dashboard/', views.whatsapp_admin_dashboard, name='admin_dashboard'),
-    path('admin/session/<str:session_id>/messages/', views.session_messages, name='session_messages'),
+    # Session and message APIs
+    path('api/sessions/', views.whatsapp_sessions_api, name='sessions_api'),
+    path('api/sessions/<str:session_id>/messages/', views.session_messages_api, name='session_messages_api'),
 ]

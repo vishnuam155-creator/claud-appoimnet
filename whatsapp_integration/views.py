@@ -1,12 +1,12 @@
 """
-Views for handling WhatsApp webhook and web interface
+REST API views for WhatsApp webhook integration
+All template-based views have been removed - this is a pure REST API module
 """
 import json
 import uuid
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.shortcuts import render
 from django.utils import timezone
 
 from .models import WhatsAppMessage, WhatsAppSession
@@ -252,34 +252,11 @@ def whatsapp_status_webhook(request):
         return HttpResponse(status=500)
 
 
-def whatsapp_chat_interface(request):
-    """
-    Render WhatsApp-like chat interface for web users
-    """
-    context = {
-        'page_title': 'WhatsApp Chat - Book Appointment'
-    }
-    return render(request, 'whatsapp_integration/whatsapp_chat.html', context)
-
-
-def whatsapp_admin_dashboard(request):
-    """
-    Admin dashboard to view WhatsApp conversations
-    """
-    # Get recent sessions
-    sessions = WhatsAppSession.objects.select_related('appointment').all()[:50]
-
-    context = {
-        'sessions': sessions,
-        'page_title': 'WhatsApp Conversations'
-    }
-    return render(request, 'whatsapp_integration/admin_dashboard.html', context)
-
-
 @require_http_methods(["GET"])
-def session_messages(request, session_id):
+def session_messages_api(request, session_id):
     """
     API endpoint to get all messages for a session
+    GET: Returns all messages for the specified session
     """
     messages = WhatsAppMessage.objects.filter(session_id=session_id).order_by('timestamp')
 
@@ -293,4 +270,57 @@ def session_messages(request, session_id):
         'status': msg.status
     } for msg in messages]
 
-    return JsonResponse({'messages': data})
+    return JsonResponse({
+        'success': True,
+        'session_id': session_id,
+        'count': len(data),
+        'messages': data
+    })
+
+
+@require_http_methods(["GET"])
+def whatsapp_sessions_api(request):
+    """
+    API endpoint to get all WhatsApp sessions
+    GET: Returns list of WhatsApp sessions with optional filters
+    """
+    sessions = WhatsAppSession.objects.select_related('appointment').all()
+
+    # Apply filters
+    is_active = request.GET.get('is_active')
+    phone_number = request.GET.get('phone_number')
+
+    if is_active is not None:
+        sessions = sessions.filter(is_active=is_active.lower() == 'true')
+
+    if phone_number:
+        sessions = sessions.filter(phone_number__icontains=phone_number)
+
+    # Pagination
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 50))
+    start = (page - 1) * page_size
+    end = start + page_size
+
+    total_count = sessions.count()
+    sessions_page = sessions[start:end]
+
+    # Serialize data
+    data = [{
+        'id': session.id,
+        'session_id': session.session_id,
+        'phone_number': session.phone_number,
+        'is_active': session.is_active,
+        'last_message_at': session.last_message_at.isoformat(),
+        'created_at': session.created_at.isoformat(),
+        'appointment_booking_id': session.appointment.booking_id if session.appointment else None,
+    } for session in sessions_page]
+
+    return JsonResponse({
+        'success': True,
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total_count + page_size - 1) // page_size,
+        'sessions': data
+    })
