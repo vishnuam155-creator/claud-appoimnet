@@ -30,7 +30,7 @@ class VoiceAssistantAPIView(View):
     def post(self, request):
         """Process voice message and return AI-powered response"""
         try:
-            # Handle empty or invalid request body
+            # Handle empty request body
             if not request.body or request.body.strip() == b'':
                 return JsonResponse({
                     'success': False,
@@ -38,19 +38,51 @@ class VoiceAssistantAPIView(View):
                     'message': 'Please send a valid JSON request. Example: {"message": "hello", "session_id": "123"}'
                 }, status=400)
 
-            try:
-                data = json.loads(request.body)
-            except json.JSONDecodeError as e:
-                print(f"VoiceBot JSON decode error: {e}, Body: {request.body[:100]}")
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Invalid JSON format',
-                    'message': 'Please send valid JSON data. Example: {"message": "I have a headache", "session_id": "voice_123"}'
-                }, status=400)
+            # Check content type to determine parsing method
+            content_type = request.META.get('CONTENT_TYPE', '').lower()
 
-            message = data.get('message', '')
-            session_id = data.get('session_id')
-            session_data = data.get('session_data', {})
+            # Support both JSON and form data
+            if 'application/json' in content_type:
+                # Parse JSON data
+                try:
+                    data = json.loads(request.body)
+                    message = data.get('message', '')
+                    session_id = data.get('session_id')
+                    session_data = data.get('session_data', {})
+                except json.JSONDecodeError as e:
+                    print(f"VoiceBot JSON decode error: {e}, Body: {request.body[:100]}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid JSON format',
+                        'message': 'Please send valid JSON data. Example: {"message": "I have a headache", "session_id": "voice_123"}'
+                    }, status=400)
+
+            elif 'multipart/form-data' in content_type or 'application/x-www-form-urlencoded' in content_type:
+                # Parse form data (from frontend FormData or form submission)
+                message = request.POST.get('message') or request.POST.get('text', '')
+                session_id = request.POST.get('session_id')
+                session_data = {}
+
+                # Try to parse session_data if provided as JSON string
+                session_data_str = request.POST.get('session_data')
+                if session_data_str:
+                    try:
+                        session_data = json.loads(session_data_str)
+                    except:
+                        session_data = {}
+
+            else:
+                # Try JSON first, then form data as fallback
+                try:
+                    data = json.loads(request.body)
+                    message = data.get('message', '')
+                    session_id = data.get('session_id')
+                    session_data = data.get('session_data', {})
+                except:
+                    # Fallback to form data
+                    message = request.POST.get('message') or request.POST.get('text', '')
+                    session_id = request.POST.get('session_id')
+                    session_data = {}
 
             # Generate session ID if not provided
             if not session_id:
