@@ -138,7 +138,24 @@ class VoiceAPIView(View):
     def post(self, request):
         """Handle voice transcription and synthesis requests"""
         try:
-            data = json.loads(request.body)
+            # Handle empty or invalid request body
+            if not request.body or request.body.strip() == b'':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Empty request body',
+                    'message': 'Please send a valid JSON request with action field (transcribe/synthesize).'
+                }, status=400)
+
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                logger.error(f"Voice API JSON decode error: {e}, Body: {request.body[:100]}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid JSON format',
+                    'message': 'Please send valid JSON. Example: {"action": "transcribe", "audio_data": "..."}'
+                }, status=400)
+
             action = data.get('action')  # 'transcribe' or 'synthesize'
 
             if action == 'transcribe':
@@ -221,7 +238,24 @@ class VoiceAssistantAPIView(View):
 
     def post(self, request):
         try:
-            data = json.loads(request.body)
+            # Handle empty or invalid request body
+            if not request.body or request.body.strip() == b'':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Empty request body',
+                    'message': 'Please send a valid JSON request with message field.'
+                }, status=400)
+
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {e}, Body: {request.body[:100]}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid JSON format',
+                    'message': 'Please send valid JSON data. Example: {"message": "hello", "session_id": "123"}'
+                }, status=400)
+
             message = data.get('message', '')
             session_id = data.get('session_id')
             session_data = data.get('session_data', {})
