@@ -14,7 +14,10 @@ from voicebot.voice_assistant_manager import VoiceAssistantManager
 
 
 def voice_assistant_page(request):
-    """Render the voice assistant interface"""
+    """
+    Render the voice assistant interface
+    Gemini 2.5 Flash-powered natural conversational appointment booking
+    """
     return render(request, 'voicebot/voice_assistant.html')
 
 
@@ -81,14 +84,33 @@ class VoiceAssistantAPIView(View):
     def get(self, request):
         """Return API info"""
         return JsonResponse({
-            'message': 'Voice Assistant API - Gemini AI-powered voice booking',
+            'message': 'Voice Assistant API - Google Gemini 2.5 Flash powered natural conversational booking',
+            'version': '2.0',
+            'ai_model': 'Google Gemini 2.5 Flash',
             'endpoint': '/voicebot/api/',
-            'required_fields': ['message', 'session_id (optional)', 'session_data (optional)'],
+            'method': 'POST',
+            'required_fields': {
+                'message': 'User voice input (string)',
+                'session_id': 'Session identifier (optional, auto-generated)',
+                'session_data': 'Conversation context (optional, managed automatically)'
+            },
             'features': [
-                'Natural language understanding with Gemini AI',
-                'Intelligent doctor matching by name or symptoms',
-                'Natural date/time parsing',
-                'Context-aware conversation flow',
-                'Intent detection and correction handling'
-            ]
+                '🤖 Natural language understanding with Gemini 2.5 Flash AI',
+                '👨‍⚕️ Intelligent doctor matching by name or symptoms',
+                '📅 Smart date/time parsing (supports natural language)',
+                '💬 Context-aware multi-turn conversation flow',
+                '🎯 Intent detection and automatic correction handling',
+                '🔄 Mid-conversation symptom change detection',
+                '📱 Complete appointment booking workflow',
+                '✅ Real-time availability checking'
+            ],
+            'conversation_stages': [
+                'greeting', 'patient_name', 'doctor_selection',
+                'date_selection', 'time_selection', 'phone_collection',
+                'confirmation', 'completed'
+            ],
+            'example_request': {
+                'message': 'I have a headache',
+                'session_id': 'voice_1234567890'
+            }
         })
