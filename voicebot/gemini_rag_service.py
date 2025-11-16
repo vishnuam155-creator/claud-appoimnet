@@ -248,15 +248,22 @@ Provide your response as JSON:
   "action": "continue|booking_complete|change_detected|need_info",
   "next_stage": "greeting|patient_name|doctor_selection|date_selection|time_selection|phone_collection|confirmation|completed",
   "extracted_data": {
-    "patient_name": "if mentioned",
-    "doctor_id": "if selected (use ID from context)",
-    "doctor_name": "if selected",
-    "appointment_date": "YYYY-MM-DD format if mentioned",
-    "appointment_time": "HH:MM AM/PM format if mentioned",
-    "phone": "10-digit number if mentioned",
+    "patient_name": "if mentioned (e.g., 'John Smith')",
+    "doctor_id": "NUMERIC ID ONLY if doctor is selected (e.g., 5, NOT 'Dr. Smith')",
+    "doctor_name": "doctor's name if selected (e.g., 'Dr. Michael Brown')",
+    "appointment_date": "YYYY-MM-DD format if mentioned (e.g., '2025-11-17')",
+    "appointment_time": "HH:MM AM/PM format if mentioned (e.g., '10:00 AM')",
+    "phone": "10-digit number only if mentioned (e.g., '9876543210')",
     "intent": "proceed|change_doctor|change_date|change_time|change_phone|cancel|unclear"
   }
 }
+
+CRITICAL FOR doctor_id:
+- Look up the doctor's numeric ID from the context above
+- ONLY put NUMBERS in doctor_id (e.g., 1, 2, 3)
+- NEVER put names in doctor_id (NOT "Dr. Smith", use the ID like 5)
+- Put the doctor's NAME in doctor_name field
+- If you can't find the numeric ID, omit doctor_id and only provide doctor_name
 
 REMEMBER:
 - Keep responses conversational and natural

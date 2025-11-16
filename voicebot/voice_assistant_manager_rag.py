@@ -137,10 +137,32 @@ class VoiceAssistantManagerRAG:
 
         # Extract doctor information
         if extracted_data.get('doctor_id'):
-            updates['doctor_id'] = int(extracted_data['doctor_id'])
+            doctor_id_value = extracted_data['doctor_id']
 
-        if extracted_data.get('doctor_name'):
-            updates['doctor_name'] = extracted_data['doctor_name']
+            # Handle case where LLM returns name instead of ID
+            if isinstance(doctor_id_value, str) and not doctor_id_value.isdigit():
+                # Try to find doctor by name
+                doctor = self._find_doctor_by_name(doctor_id_value)
+                if doctor:
+                    updates['doctor_id'] = doctor.id
+                    updates['doctor_name'] = doctor.name
+            else:
+                # It's a valid numeric ID
+                try:
+                    updates['doctor_id'] = int(doctor_id_value)
+                except (ValueError, TypeError):
+                    print(f"Invalid doctor_id format: {doctor_id_value}")
+
+        if extracted_data.get('doctor_name') and 'doctor_name' not in updates:
+            # Only update if not already set from doctor_id lookup
+            doctor_name = extracted_data['doctor_name']
+            updates['doctor_name'] = doctor_name
+
+            # Try to find doctor ID from name if not already set
+            if 'doctor_id' not in updates:
+                doctor = self._find_doctor_by_name(doctor_name)
+                if doctor:
+                    updates['doctor_id'] = doctor.id
 
         # Extract appointment date
         if extracted_data.get('appointment_date'):
