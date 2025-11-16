@@ -254,7 +254,7 @@ Provide your response as JSON:
     "appointment_date": "YYYY-MM-DD format if mentioned (e.g., '2025-11-17')",
     "appointment_time": "HH:MM AM/PM format if mentioned (e.g., '10:00 AM')",
     "phone": "10-digit number only if mentioned (e.g., '9876543210')",
-    "intent": "proceed|change_doctor|change_date|change_time|change_phone|cancel|unclear"
+    "intent": "proceed|confirm|change_doctor|change_date|change_time|change_phone|cancel|unclear"
   }
 }
 
@@ -264,6 +264,12 @@ CRITICAL FOR doctor_id:
 - NEVER put names in doctor_id (NOT "Dr. Smith", use the ID like 5)
 - Put the doctor's NAME in doctor_name field
 - If you can't find the numeric ID, omit doctor_id and only provide doctor_name
+
+CRITICAL FOR BOOKING COMPLETION:
+- Set action to "booking_complete" ONLY when patient explicitly confirms (says "yes", "confirm", "book it", etc.)
+- Set intent to "confirm" when patient confirms the booking
+- Set next_stage to "completed" when booking is confirmed
+- All three should be set together for successful booking
 
 REMEMBER:
 - Keep responses conversational and natural

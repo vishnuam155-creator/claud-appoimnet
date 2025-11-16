@@ -78,6 +78,35 @@ class VoiceAssistantManagerRAG:
                 if result:
                     return result
 
+            # Check if booking should be completed (action is booking_complete OR stage is confirmation with all data)
+            if action == 'booking_complete' or (next_stage == 'completed' and current_stage == 'confirmation'):
+                print(f"[DEBUG] Booking completion detected! Action: {action}, Current: {current_stage}, Next: {next_stage}")
+
+                # Get updated booking state after extraction
+                updated_state = self.context_manager.get_booking_state()
+                print(f"[DEBUG] Updated state: {updated_state}")
+
+                # Verify all required fields are present
+                required_fields = ['patient_name', 'patient_phone', 'doctor_id', 'appointment_date', 'appointment_time']
+                has_all_fields = all(updated_state.get(field) for field in required_fields)
+
+                print(f"[DEBUG] Has all fields: {has_all_fields}, Appointment ID: {updated_state.get('appointment_id')}")
+
+                # Check which fields are missing
+                missing_fields = [field for field in required_fields if not updated_state.get(field)]
+                if missing_fields:
+                    print(f"[DEBUG] Missing fields: {missing_fields}")
+
+                if has_all_fields and not updated_state.get('appointment_id'):
+                    print("[DEBUG] Creating appointment...")
+                    # Create the appointment
+                    result = self._create_appointment(updated_state)
+                    print(f"[DEBUG] Appointment creation result: {result.get('success') if result else 'None'}")
+                    if result:
+                        return result
+                else:
+                    print(f"[DEBUG] Skipping appointment creation - has_all_fields: {has_all_fields}, has_appointment_id: {updated_state.get('appointment_id') is not None}")
+
             # Update conversation stage
             self.context_manager.set_stage(next_stage)
 
