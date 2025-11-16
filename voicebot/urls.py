@@ -1,18 +1,26 @@
 """
 VoiceBot REST API URL Configuration
 Pure REST API - No template rendering
+Enhanced with RAG (Retrieval-Augmented Generation) System
 """
 
 from django.urls import path
 from . import views
+from . import views_rag
 from . import voice_intelligence_views
 
 app_name = 'voicebot'
 
 urlpatterns = [
-    # ========== Voice Assistant REST API ==========
-    # Main API endpoint for voice-based conversation
-    path('api/', views.VoiceAssistantAPIView.as_view(), name='api'),
+    # ========== RAG-Powered Voice Assistant API (NEW - Recommended) ==========
+    # Advanced RAG-based conversation with Gemini 2.5 Flash
+    # Full context awareness, natural conversation, handles changes at any stage
+    path('api/', views_rag.VoiceAssistantRAGAPIView.as_view(), name='api'),
+    path('api/rag/', views_rag.VoiceAssistantRAGAPIView.as_view(), name='api_rag'),
+
+    # ========== Legacy Voice Assistant API ==========
+    # Original implementation (kept for backwards compatibility)
+    path('api/legacy/', views.VoiceAssistantAPIView.as_view(), name='api_legacy'),
 
     # ========== Voice Intelligence API Endpoints ==========
     # Advanced AI-powered voice intelligence system
